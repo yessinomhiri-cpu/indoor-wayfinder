@@ -5,8 +5,8 @@
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f0f23",
-  "theme_color": "#0f0f23",
+  "background_color": "#070913",
+  "theme_color": "#070913",
   "lang": "fr",
   "scope": "./",
   "icons": [
@@ -24,4 +24,3 @@
     }
   ]
 }
-

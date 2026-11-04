@@ -6,186 +6,1032 @@
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
   Modified     : 2026-11-04
-  Version      : 0.1.0 (Week 1 – PWA shell + Three.js scene)
-  Description  : Entry point of the PWA. Loads Three.js r160 from jsDelivr
-                 via an import map, registers the future Service Worker,
-                 and boots the 3D scene defined in src/main.js.
+  Version      : 1.1.0 (Week 1 – Rotating cube with edges, arrow reserved)
+  Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
+                 a cohesive dark glassmorphism design system, accessible UI
+                 controls, compact header with connectivity status, discrete
+                 status toast, floating bottom action bar, scan reticle mockup,
+                 and interactive destination selection bottom sheet.
   ==========================================================================
 -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <!-- ==================== Meta ==================== -->
+  <!-- ==================== Meta & PWA Setup ==================== -->
   <meta charset="UTF-8" />
   <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0f0f23" />
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#070913" />
   <meta name="description"
-        content="Indoor Wayfinder – Navigation intérieure en réalité augmentée" />
+        content="Indoor Wayfinder – Navigation intérieure immersive en réalité augmentée" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <title>Indoor Wayfinder</title>
 
-  <!-- ==================== PWA Manifest ==================== -->
+  <!-- ==================== PWA Manifest & Icons ==================== -->
   <link rel="manifest" href="manifest.json" />
-  <!-- Placeholder icon references (real PNGs will be added later) -->
-  <link rel="icon" type="image/png" sizes="192x192"
-        href="assets/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
 
   <!-- ==================== Import Map – Three.js r160 (pinned) ==================== -->
-  <!--
-    We use an import map so that src/main.js can simply write:
-      import * as THREE from 'three';
-    The browser resolves 'three' to the jsDelivr CDN URL below.
-    "three/addons/" is mapped for future use (e.g. GLTFLoader).
-  -->
   <script type="importmap">
   {
     "imports": {
-      "three":           "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/":   "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      "three":         "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
     }
   }
   </script>
 
-  <!-- ==================== Styles ==================== -->
+  <!-- ==================== Stylesheet ==================== -->
   <style>
-    /* ---------- Reset ---------- */
+    /* ==========================================================================
+       1. Design System: CSS Custom Properties (:root)
+       ========================================================================== */
+    :root {
+      /* --- Deep Night Blue Palette --- */
+      --color-bg-base: #070913;
+      --color-bg-surface: #0f1424;
+      --color-bg-glass: rgba(15, 20, 36, 0.72);
+      --color-bg-glass-card: rgba(20, 27, 48, 0.65);
+      --color-bg-glass-modal: rgba(12, 16, 30, 0.94);
+      --color-bg-overlay: rgba(7, 9, 19, 0.85);
+
+      /* --- Accent Colors (Cyan / Blue) --- */
+      --color-accent-primary: #00d2ff;
+      --color-accent-primary-hover: #38dcff;
+      --color-accent-secondary: #0284c7;
+      --color-accent-gradient: linear-gradient(135deg, #00d2ff 0%, #0077ff 100%);
+      --color-accent-glow: rgba(0, 210, 255, 0.35);
+
+      /* --- Semantic State Accents --- */
+      --color-success: #10b981;
+      --color-success-glow: rgba(16, 185, 129, 0.45);
+      --color-warning: #f59e0b;
+      --color-alert: #ef4444;
+      --color-alert-bg: rgba(239, 68, 68, 0.16);
+
+      /* --- High Contrast Typography --- */
+      --color-text-primary: #f8fafc;
+      --color-text-secondary: #94a3b8;
+      --color-text-muted: #64748b;
+      --color-text-inverse: #050e1f;
+
+      /* --- Glass Borders & Focus Indicators --- */
+      --color-border-subtle: rgba(255, 255, 255, 0.08);
+      --color-border-glass: rgba(255, 255, 255, 0.14);
+      --color-border-highlight: rgba(0, 210, 255, 0.4);
+      --color-focus-ring: #00d2ff;
+
+      /* --- Border Radii Scale --- */
+      --radius-xs: 4px;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-xl: 28px;
+      --radius-full: 9999px;
+
+      /* --- Spacing Scale --- */
+      --space-2xs: 4px;
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+
+      /* --- Shadows & Atmospheric Glows --- */
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+      --shadow-md: 0 4px 18px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.65);
+      --shadow-button-primary: 0 4px 18px rgba(0, 210, 255, 0.38);
+
+      /* --- Transitions & Timing Functions --- */
+      --transition-fast: 140ms cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-sheet: 340ms cubic-bezier(0.16, 1, 0.3, 1);
+
+      /* --- Modern System Typography Stack --- */
+      --font-family-system: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --font-size-xs: 0.75rem;    /* 12px - Légendes, badges */
+      --font-size-sm: 0.875rem;   /* 14px - Boutons, items secondaires */
+      --font-size-base: 1rem;     /* 16px - Corps de texte */
+      --font-size-md: 1.125rem;   /* 18px - Titres de cartes */
+      --font-size-lg: 1.25rem;    /* 20px - Header d'application */
+    }
+
+    /* ==========================================================================
+       2. Reset & Base Layout
+       ========================================================================== */
     *, *::before, *::after {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
     }
 
     html, body {
       width: 100%;
       height: 100%;
       overflow: hidden;
-      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
-      background: #0f0f23;
-      color: #e0e0e0;
+      font-family: var(--font-family-system);
+      background-color: var(--color-bg-base);
+      color: var(--color-text-primary);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    /* ---------- Three.js canvas container ---------- */
+    /* Three.js canvas container covering whole viewport */
     #scene-container {
       position: fixed;
-      inset: 0;            /* top:0 right:0 bottom:0 left:0 */
+      inset: 0;
       z-index: 0;
+      overflow: hidden;
     }
 
-    /* ---------- UI overlay (on top of the 3D scene) ---------- */
+    /* UI Overlay wrapper */
     #ui-overlay {
       position: fixed;
       inset: 0;
       z-index: 10;
-      pointer-events: none;          /* let clicks pass through to canvas */
+      pointer-events: none;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      padding: 1rem;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
     }
 
-    /* ---------- Top bar ---------- */
-    #top-bar {
-      text-align: center;
+    /* ==========================================================================
+       3. Compact Header & Connectivity Badge
+       ========================================================================== */
+    #top-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-xs) var(--space-md);
       pointer-events: auto;
     }
 
-    #top-bar h1 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      color: #ffffff;
-      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
-      letter-spacing: 0.04em;
+    .app-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      padding: 0.35rem 0.75rem;
+      background: var(--color-bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-full);
+      box-shadow: var(--shadow-sm);
     }
 
-    /* ---------- Status message ---------- */
-    #status-area {
+    .app-logo-icon {
+      width: 22px;
+      height: 22px;
+      color: var(--color-accent-primary);
+      filter: drop-shadow(0 0 5px var(--color-accent-glow));
+    }
+
+    .app-title {
+      font-size: var(--font-size-sm);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--color-text-primary);
+    }
+
+    /* Network status badge (online/offline indicator) */
+    .network-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0.35rem 0.75rem;
+      background: var(--color-bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-full);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .network-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--color-success);
+      box-shadow: 0 0 6px var(--color-success-glow);
+      transition: background-color var(--transition-fast);
+    }
+
+    .network-badge.is-offline {
+      border-color: rgba(239, 68, 68, 0.4);
+      color: var(--color-alert);
+    }
+
+    .network-badge.is-offline .network-dot {
+      background-color: var(--color-alert);
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+    }
+
+    /* ==========================================================================
+       4. Discreet Status Toast (Below Header)
+       ========================================================================== */
+    .status-toast-wrapper {
+      position: absolute;
+      top: calc(58px + env(safe-area-inset-top, 0px));
+      left: 0;
+      right: 0;
       display: flex;
       justify-content: center;
+      pointer-events: none;
+      z-index: 20;
     }
 
-    #status-message {
-      background: rgba(15, 15, 35, 0.80);
-      backdrop-filter: blur(6px);
-      padding: 0.6rem 1.4rem;
-      border-radius: 1rem;
-      font-size: 0.9rem;
-      text-align: center;
+    #status-toast {
       pointer-events: auto;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #90caf9;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      max-width: 90%;
+      padding: 0.45rem 1rem;
+      background: var(--color-bg-glass);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-full);
+      box-shadow: var(--shadow-md);
+      font-size: var(--font-size-xs);
+      font-weight: 500;
+      color: var(--color-text-primary);
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity var(--transition-normal), transform var(--transition-normal);
+      cursor: pointer;
     }
 
-    /* ---------- Bottom bar (buttons, disabled for now) ---------- */
+    #status-toast.toast-hidden {
+      opacity: 0;
+      transform: translateY(-8px);
+      pointer-events: none;
+    }
+
+    .toast-indicator {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(0, 210, 255, 0.2);
+      color: var(--color-accent-primary);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    /* ==========================================================================
+       5. Floating Glass Action Bar (Bottom)
+       ========================================================================== */
+    .bottom-bar-container {
+      width: 100%;
+      padding: var(--space-md);
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+    }
+
     #bottom-bar {
       display: flex;
+      align-items: center;
       justify-content: center;
-      gap: 0.75rem;
+      gap: var(--space-sm);
+      width: 100%;
+      max-width: 440px;
+      padding: var(--space-xs);
+      background: var(--color-bg-glass);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
       pointer-events: auto;
     }
 
-    .btn {
-      padding: 0.7rem 1.4rem;
-      border: none;
-      border-radius: 2rem;
-      font-size: 0.85rem;
+    /* Common Button Styles & Visible States */
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+      min-height: 48px;
+      border-radius: var(--radius-full);
+      font-family: var(--font-family-system);
+      font-size: var(--font-size-sm);
       font-weight: 600;
+      letter-spacing: 0.03em;
       cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      transition: transform 0.12s ease;
-    }
-    .btn:active { transform: scale(0.95); }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #448aff, #1565c0);
-      color: #fff;
-      box-shadow: 0 3px 12px rgba(68, 138, 255, 0.35);
+      user-select: none;
+      transition: transform var(--transition-fast),
+                  box-shadow var(--transition-fast),
+                  background-color var(--transition-fast),
+                  border-color var(--transition-fast),
+                  opacity var(--transition-fast);
     }
 
-    .btn-secondary {
+    .action-btn .btn-icon {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    /* Primary Action Button (SCANNER - prominent) */
+    .btn-action-primary {
+      flex: 1.35;
+      background: var(--color-accent-gradient);
+      color: var(--color-text-inverse);
+      border: none;
+      box-shadow: var(--shadow-button-primary);
+    }
+
+    .btn-action-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 22px rgba(0, 210, 255, 0.55);
+    }
+
+    .btn-action-primary:active {
+      transform: translateY(1px) scale(0.97);
+      box-shadow: 0 2px 8px rgba(0, 210, 255, 0.3);
+    }
+
+    /* Secondary Action Button (DESTINATION) */
+    .btn-action-secondary {
+      flex: 1;
       background: rgba(255, 255, 255, 0.08);
-      color: #ccc;
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border-glass);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-action-secondary:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.25);
+      transform: translateY(-2px);
+    }
+
+    .btn-action-secondary:active {
+      transform: translateY(1px) scale(0.97);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Focus & Disabled States */
+    .action-btn:focus-visible {
+      outline: 2px solid var(--color-focus-ring);
+      outline-offset: 3px;
+    }
+
+    .action-btn:disabled,
+    .action-btn[disabled] {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    /* Icon button utility */
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 48px;
+      min-height: 48px;
+      border-radius: 50%;
+      border: 1px solid var(--color-border-glass);
+      background: var(--color-bg-glass);
+      color: var(--color-text-primary);
+      cursor: pointer;
+      transition: transform var(--transition-fast), background-color var(--transition-fast);
+    }
+
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      transform: scale(1.05);
+    }
+
+    .icon-btn:active {
+      transform: scale(0.95);
+    }
+
+    .icon-btn:focus-visible {
+      outline: 2px solid var(--color-focus-ring);
+      outline-offset: 2px;
+    }
+
+    /* ==========================================================================
+       6. Mockup Screen: Scan Overlay (Viewfinder & Sweep Line)
+       ========================================================================== */
+    .scan-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: var(--color-bg-overlay);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding-top: calc(var(--space-md) + env(safe-area-inset-top, 0px));
+      padding-bottom: calc(var(--space-lg) + env(safe-area-inset-bottom, 0px));
+      padding-left: calc(var(--space-md) + env(safe-area-inset-left, 0px));
+      padding-right: calc(var(--space-md) + env(safe-area-inset-right, 0px));
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition-normal);
+    }
+
+    .scan-overlay.is-open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .scan-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .scan-title-text {
+      font-size: var(--font-size-md);
+      font-weight: 700;
+      color: var(--color-text-primary);
+    }
+
+    /* Reticle / Viewfinder */
+    .scan-viewfinder-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: auto 0;
+    }
+
+    .scan-viewfinder {
+      position: relative;
+      width: min(72vw, 270px);
+      height: min(72vw, 270px);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 0 0 1000px rgba(7, 9, 19, 0.35);
+      overflow: hidden;
+    }
+
+    /* Viewfinder corner brackets */
+    .viewfinder-corner {
+      position: absolute;
+      width: 26px;
+      height: 26px;
+      border-color: var(--color-accent-primary);
+      border-style: solid;
+      border-width: 0;
+      filter: drop-shadow(0 0 6px var(--color-accent-glow));
+    }
+    .viewfinder-corner.corner-tl {
+      top: 0; left: 0;
+      border-top-width: 3px;
+      border-left-width: 3px;
+      border-top-left-radius: var(--radius-md);
+    }
+    .viewfinder-corner.corner-tr {
+      top: 0; right: 0;
+      border-top-width: 3px;
+      border-right-width: 3px;
+      border-top-right-radius: var(--radius-md);
+    }
+    .viewfinder-corner.corner-bl {
+      bottom: 0; left: 0;
+      border-bottom-width: 3px;
+      border-left-width: 3px;
+      border-bottom-left-radius: var(--radius-md);
+    }
+    .viewfinder-corner.corner-br {
+      bottom: 0; right: 0;
+      border-bottom-width: 3px;
+      border-right-width: 3px;
+      border-bottom-right-radius: var(--radius-md);
+    }
+
+    /* Animated laser sweep line */
+    .scan-sweep-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--color-accent-primary), transparent);
+      box-shadow: 0 0 12px 2px var(--color-accent-primary);
+      animation: sweepLaser 2.2s ease-in-out infinite;
+    }
+
+    @keyframes sweepLaser {
+      0%   { top: 6%; opacity: 0.3; }
+      50%  { top: 92%; opacity: 1; }
+      100% { top: 6%; opacity: 0.3; }
+    }
+
+    .scan-guidance {
+      margin-top: var(--space-lg);
+      text-align: center;
+      max-width: 300px;
+    }
+
+    .scan-guidance-primary {
+      font-size: var(--font-size-base);
+      font-weight: 700;
+      color: var(--color-text-primary);
+      margin-bottom: var(--space-2xs);
+    }
+
+    .scan-guidance-secondary {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      line-height: 1.4;
+    }
+
+    /* ==========================================================================
+       7. Mockup Screen: Destination Bottom Sheet
+       ========================================================================== */
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 150;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition-normal);
+    }
+
+    .sheet-backdrop.is-open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .destination-sheet {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 160;
+      background: var(--color-bg-glass-modal);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-top: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      max-height: 80vh;
+      transform: translateY(100%);
+      transition: transform var(--transition-sheet);
+      padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+    }
+
+    .destination-sheet.is-open {
+      transform: translateY(0);
+    }
+
+    /* Pull handle bar */
+    .sheet-drag-handle-bar {
+      width: 100%;
+      padding-top: var(--space-sm);
+      padding-bottom: var(--space-xs);
+      display: flex;
+      justify-content: center;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .sheet-drag-pill {
+      width: 42px;
+      height: 4px;
+      border-radius: var(--radius-full);
+      background: rgba(255, 255, 255, 0.28);
+    }
+
+    /* Sheet header */
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-xs) var(--space-md) var(--space-sm);
+    }
+
+    .sheet-title {
+      font-size: var(--font-size-md);
+      font-weight: 700;
+      color: var(--color-text-primary);
+    }
+
+    .sheet-subtitle {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+
+    /* Search input container */
+    .sheet-search-wrapper {
+      padding: 0 var(--space-md) var(--space-sm);
+    }
+
+    .search-input-box {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-md);
+      padding: 0.6rem 0.9rem;
+      transition: border-color var(--transition-fast), background-color var(--transition-fast);
+    }
+
+    .search-input-box:focus-within {
+      border-color: var(--color-focus-ring);
+      background: rgba(255, 255, 255, 0.09);
+      box-shadow: 0 0 10px rgba(0, 210, 255, 0.2);
+    }
+
+    .search-icon {
+      width: 18px;
+      height: 18px;
+      color: var(--color-text-secondary);
+      flex-shrink: 0;
+    }
+
+    .search-input {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: var(--color-text-primary);
+      font-family: var(--font-family-system);
+      font-size: var(--font-size-sm);
+      outline: none;
+    }
+
+    .search-input::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    /* Destination room list */
+    .destination-list-scroll {
+      overflow-y: auto;
+      padding: 0 var(--space-md) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+      max-height: 50vh;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .destination-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      min-height: 52px;
+      padding: 0.7rem 0.9rem;
+      background: var(--color-bg-glass-card);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      user-select: none;
+      transition: transform var(--transition-fast),
+                  background-color var(--transition-fast),
+                  border-color var(--transition-fast);
+    }
+
+    .destination-item:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.22);
+      transform: translateX(3px);
+    }
+
+    .destination-item:active {
+      transform: scale(0.98);
+      background: rgba(0, 210, 255, 0.14);
+    }
+
+    .destination-item:focus-visible {
+      outline: 2px solid var(--color-focus-ring);
+      outline-offset: 2px;
+    }
+
+    .dest-icon-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-sm);
+      background: rgba(0, 210, 255, 0.12);
+      color: var(--color-accent-primary);
+      font-size: 1.15rem;
+      flex-shrink: 0;
+    }
+
+    .dest-icon-badge.alert-type {
+      background: var(--color-alert-bg);
+      color: var(--color-alert);
+    }
+
+    .dest-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .dest-name {
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      color: var(--color-text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dest-description {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dest-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .dest-tag {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: var(--radius-xs);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--color-text-secondary);
+    }
+
+    .dest-tag.alert-tag {
+      background: var(--color-alert-bg);
+      color: var(--color-alert);
+    }
+
+    .dest-distance {
+      font-size: 11px;
+      color: var(--color-accent-primary);
+      font-weight: 500;
+    }
+
+    .no-results-msg {
+      text-align: center;
+      padding: var(--space-md);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-muted);
+      display: none;
+    }
+
+    /* ==========================================================================
+       8. Accessibility & Reduced Motion Handling
+       ========================================================================== */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
     }
   </style>
 </head>
 <body>
 
-  <!-- ==================== Three.js canvas goes here ==================== -->
-  <div id="scene-container"></div>
+  <!-- ==================== Three.js Canvas Container ==================== -->
+  <div id="scene-container" aria-hidden="true"></div>
 
-  <!-- ==================== UI overlay ==================== -->
+  <!-- ==================== UI Overlay ==================== -->
   <div id="ui-overlay">
 
-    <!-- Top bar -->
-    <div id="top-bar">
-      <h1>🧭 Indoor Wayfinder</h1>
-    </div>
+    <!-- Compact Header -->
+    <header id="top-header" role="banner">
+      <div class="app-brand">
+        <!-- Stylized Compass / Wayfinder Logo -->
+        <svg class="app-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="12 2 19 21 12 17 5 21 12 2"></polygon>
+        </svg>
+        <span class="app-title">Indoor Wayfinder</span>
+      </div>
 
-    <!-- Status -->
-    <div id="status-area">
-      <div id="status-message">
-        Scannez un QR code pour vous localiser
+      <!-- Online / Offline Connectivity Indicator -->
+      <div id="network-status-badge" class="network-badge" role="status" aria-live="polite">
+        <span class="network-dot" aria-hidden="true"></span>
+        <span id="network-status-label" class="network-label">En ligne</span>
+      </div>
+    </header>
+
+    <!-- Discreet Status Toast (Auto-dismissing) -->
+    <div class="status-toast-wrapper">
+      <div id="status-toast" class="status-toast" role="status" aria-live="polite" title="Cliquer pour masquer">
+        <span class="toast-indicator" aria-hidden="true">✓</span>
+        <span id="status-message">Scène 3D chargée</span>
       </div>
     </div>
 
-    <!-- Action buttons (disabled until later weeks) -->
-    <div id="bottom-bar">
-      <button id="btn-scan" class="btn btn-primary" disabled>
-        📷 Scanner
-      </button>
-      <button id="btn-destination" class="btn btn-secondary" disabled>
-        📍 Destination
-      </button>
+    <!-- Floating Glass Action Bar -->
+    <div class="bottom-bar-container">
+      <nav id="bottom-bar" aria-label="Actions de navigation">
+        <!-- SCANNER Button (Primary) -->
+        <button id="btn-scan" class="action-btn btn-action-primary" type="button" aria-label="Ouvrir le scanner de repère QR">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span>SCANNER</span>
+        </button>
+
+        <!-- DESTINATION Button (Secondary) -->
+        <button id="btn-destination" class="action-btn btn-action-secondary" type="button" aria-label="Ouvrir la liste des salles et destinations">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+          <span>DESTINATION</span>
+        </button>
+      </nav>
     </div>
 
   </div>
 
-  <!-- ==================== Main module ==================== -->
+  <!-- ==================== Mockup Screen 1: Scan Overlay ==================== -->
+  <div id="scan-overlay" class="scan-overlay" role="dialog" aria-modal="true" aria-labelledby="scan-title" aria-hidden="true">
+    <div class="scan-top-bar">
+      <div id="scan-title" class="scan-title-text">Scanner un repère AR</div>
+      <button id="btn-close-scan" class="icon-btn" type="button" aria-label="Fermer le scanner">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Viewfinder Reticle -->
+    <div class="scan-viewfinder-container">
+      <div class="scan-viewfinder">
+        <div class="viewfinder-corner corner-tl"></div>
+        <div class="viewfinder-corner corner-tr"></div>
+        <div class="viewfinder-corner corner-bl"></div>
+        <div class="viewfinder-corner corner-br"></div>
+        <div class="scan-sweep-line"></div>
+      </div>
+
+      <div class="scan-guidance">
+        <p class="scan-guidance-primary">Scannez le QR code le plus proche</p>
+        <p class="scan-guidance-secondary">Cadrez un repère mural pour calibrer votre position intérieure et synchroniser le graphe AR.</p>
+      </div>
+    </div>
+
+    <div style="height: 48px;"><!-- Spacer for visual balance --></div>
+  </div>
+
+  <!-- ==================== Mockup Screen 2: Destination Bottom Sheet ==================== -->
+  <div id="sheet-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
+
+  <section id="destination-sheet" class="destination-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true">
+    <!-- Drag pill handle -->
+    <div id="sheet-drag-handle-bar" class="sheet-drag-handle-bar">
+      <div class="sheet-drag-pill"></div>
+    </div>
+
+    <!-- Sheet Header -->
+    <div class="sheet-header">
+      <div>
+        <h2 id="sheet-title" class="sheet-title">Choisir une destination</h2>
+        <p class="sheet-subtitle">Sélectionnez une salle pour calculer l'itinéraire</p>
+      </div>
+      <button id="btn-close-destination" class="icon-btn" type="button" aria-label="Fermer la liste des destinations">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Search Input -->
+    <div class="sheet-search-wrapper">
+      <div class="search-input-box">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="search"
+               id="destination-search-input"
+               class="search-input"
+               placeholder="Rechercher une salle, un amphi, un service..."
+               aria-label="Rechercher une destination"
+               autocomplete="off" />
+      </div>
+    </div>
+
+    <!-- Scrollable Room List -->
+    <div id="destination-list-scroll" class="destination-list-scroll" role="list">
+      <!-- Item: Salle B12 -->
+      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="room-b12" data-destination-name="Salle B12">
+        <div class="dest-icon-badge" aria-hidden="true">💻</div>
+        <div class="dest-details">
+          <div class="dest-name">Salle B12</div>
+          <div class="dest-description">Laboratoire Réseaux & Télécoms</div>
+        </div>
+        <div class="dest-meta">
+          <span class="dest-tag">Étage 1</span>
+          <span class="dest-distance">25 m</span>
+        </div>
+      </article>
+
+      <!-- Item: Sortie de secours Nord -->
+      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="exit-north" data-destination-name="Sortie de secours Nord">
+        <div class="dest-icon-badge alert-type" aria-hidden="true">🚪</div>
+        <div class="dest-details">
+          <div class="dest-name">Sortie de secours Nord</div>
+          <div class="dest-description">Issue de secours vers le parvis</div>
+        </div>
+        <div class="dest-meta">
+          <span class="dest-tag alert-tag">RDC</span>
+          <span class="dest-distance">15 m</span>
+        </div>
+      </article>
+
+      <!-- Item: Amphi A -->
+      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="amphi-a" data-destination-name="Amphi A">
+        <div class="dest-icon-badge" aria-hidden="true">🎓</div>
+        <div class="dest-details">
+          <div class="dest-name">Amphi A</div>
+          <div class="dest-description">Grand amphithéâtre de conférences</div>
+        </div>
+        <div class="dest-meta">
+          <span class="dest-tag">RDC</span>
+          <span class="dest-distance">40 m</span>
+        </div>
+      </article>
+
+      <!-- Item: Cafétéria Centrale -->
+      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="cafeteria" data-destination-name="Cafétéria Centrale">
+        <div class="dest-icon-badge" aria-hidden="true">☕</div>
+        <div class="dest-details">
+          <div class="dest-name">Cafétéria Centrale</div>
+          <div class="dest-description">Espace détente & distributeurs</div>
+        </div>
+        <div class="dest-meta">
+          <span class="dest-tag">RDC</span>
+          <span class="dest-distance">60 m</span>
+        </div>
+      </article>
+
+      <!-- Item: Accueil & Secrétariat -->
+      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="reception" data-destination-name="Accueil & Secrétariat">
+        <div class="dest-icon-badge" aria-hidden="true">🏢</div>
+        <div class="dest-details">
+          <div class="dest-name">Accueil & Secrétariat</div>
+          <div class="dest-description">Hall principal & point d'information</div>
+        </div>
+        <div class="dest-meta">
+          <span class="dest-tag">RDC</span>
+          <span class="dest-distance">10 m</span>
+        </div>
+      </article>
+
+      <!-- Item: Sanitaires RDC -->
+      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="restrooms" data-destination-name="Sanitaires RDC">
+        <div class="dest-icon-badge" aria-hidden="true">🚻</div>
+        <div class="dest-details">
+          <div class="dest-name">Sanitaires RDC</div>
+          <div class="dest-description">Toilettes accessibles PMR</div>
+        </div>
+        <div class="dest-meta">
+          <span class="dest-tag">RDC</span>
+          <span class="dest-distance">30 m</span>
+        </div>
+      </article>
+
+      <div id="no-destinations-found" class="no-results-msg">
+        Aucune salle ne correspond à votre recherche.
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== Main JavaScript Entrypoint ==================== -->
   <script type="module" src="src/main.js"></script>
 
 </body>
 </html>
-
