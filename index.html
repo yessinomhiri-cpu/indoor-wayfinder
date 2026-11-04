@@ -1,0 +1,191 @@
+<!--
+  ==========================================================================
+  Module       : index.html
+  Project      : Indoor Wayfinder – AR Indoor Navigation PWA
+  Team         : SUP'COM SIA – Indoor Wayfinder
+  Authors      : Amin, Yassine, Oussema
+  Created      : 2026-11-04
+  Modified     : 2026-11-04
+  Version      : 0.1.0 (Week 1 – PWA shell + Three.js scene)
+  Description  : Entry point of the PWA. Loads Three.js r160 from jsDelivr
+                 via an import map, registers the future Service Worker,
+                 and boots the 3D scene defined in src/main.js.
+  ==========================================================================
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <!-- ==================== Meta ==================== -->
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f0f23" />
+  <meta name="description"
+        content="Indoor Wayfinder – Navigation intérieure en réalité augmentée" />
+
+  <title>Indoor Wayfinder</title>
+
+  <!-- ==================== PWA Manifest ==================== -->
+  <link rel="manifest" href="manifest.json" />
+  <!-- Placeholder icon references (real PNGs will be added later) -->
+  <link rel="icon" type="image/png" sizes="192x192"
+        href="assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+
+  <!-- ==================== Import Map – Three.js r160 (pinned) ==================== -->
+  <!--
+    We use an import map so that src/main.js can simply write:
+      import * as THREE from 'three';
+    The browser resolves 'three' to the jsDelivr CDN URL below.
+    "three/addons/" is mapped for future use (e.g. GLTFLoader).
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three":           "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/":   "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <!-- ==================== Styles ==================== -->
+  <style>
+    /* ---------- Reset ---------- */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      background: #0f0f23;
+      color: #e0e0e0;
+    }
+
+    /* ---------- Three.js canvas container ---------- */
+    #scene-container {
+      position: fixed;
+      inset: 0;            /* top:0 right:0 bottom:0 left:0 */
+      z-index: 0;
+    }
+
+    /* ---------- UI overlay (on top of the 3D scene) ---------- */
+    #ui-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;          /* let clicks pass through to canvas */
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 1rem;
+    }
+
+    /* ---------- Top bar ---------- */
+    #top-bar {
+      text-align: center;
+      pointer-events: auto;
+    }
+
+    #top-bar h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #ffffff;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+      letter-spacing: 0.04em;
+    }
+
+    /* ---------- Status message ---------- */
+    #status-area {
+      display: flex;
+      justify-content: center;
+    }
+
+    #status-message {
+      background: rgba(15, 15, 35, 0.80);
+      backdrop-filter: blur(6px);
+      padding: 0.6rem 1.4rem;
+      border-radius: 1rem;
+      font-size: 0.9rem;
+      text-align: center;
+      pointer-events: auto;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #90caf9;
+    }
+
+    /* ---------- Bottom bar (buttons, disabled for now) ---------- */
+    #bottom-bar {
+      display: flex;
+      justify-content: center;
+      gap: 0.75rem;
+      pointer-events: auto;
+    }
+
+    .btn {
+      padding: 0.7rem 1.4rem;
+      border: none;
+      border-radius: 2rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      transition: transform 0.12s ease;
+    }
+    .btn:active { transform: scale(0.95); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #448aff, #1565c0);
+      color: #fff;
+      box-shadow: 0 3px 12px rgba(68, 138, 255, 0.35);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #ccc;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==================== Three.js canvas goes here ==================== -->
+  <div id="scene-container"></div>
+
+  <!-- ==================== UI overlay ==================== -->
+  <div id="ui-overlay">
+
+    <!-- Top bar -->
+    <div id="top-bar">
+      <h1>🧭 Indoor Wayfinder</h1>
+    </div>
+
+    <!-- Status -->
+    <div id="status-area">
+      <div id="status-message">
+        Scannez un QR code pour vous localiser
+      </div>
+    </div>
+
+    <!-- Action buttons (disabled until later weeks) -->
+    <div id="bottom-bar">
+      <button id="btn-scan" class="btn btn-primary" disabled>
+        📷 Scanner
+      </button>
+      <button id="btn-destination" class="btn btn-secondary" disabled>
+        📍 Destination
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ==================== Main module ==================== -->
+  <script type="module" src="src/main.js"></script>
+
+</body>
+</html>
+
