@@ -5,13 +5,14 @@
   Team         : SUP'COM SIA – Indoor Wayfinder
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
-  Modified     : 2026-11-04
-  Version      : 1.1.0 (Week 1 – Rotating cube with edges, arrow reserved)
+  Modified     : 2026-11-05
+  Version      : 1.2.0 (Sprint 1 audit – accessibility, PWA, AR prep)
   Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
-                 a cohesive dark glassmorphism design system, accessible UI
-                 controls, compact header with connectivity status, discrete
-                 status toast, floating bottom action bar, scan reticle mockup,
-                 and interactive destination selection bottom sheet.
+                 a cohesive dark glassmorphism design system, accessible
+                 dialogs with focus trapping, compact header with connectivity
+                 status, discrete status toast, floating bottom action bar,
+                 scan reticle mockup, and interactive destination selection
+                 bottom sheet. Includes PWA icons and install metadata.
   ==========================================================================
 -->
 <!DOCTYPE html>
@@ -20,11 +21,13 @@
   <!-- ==================== Meta & PWA Setup ==================== -->
   <meta charset="UTF-8" />
   <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#070913" />
   <meta name="description"
         content="Indoor Wayfinder – Navigation intérieure immersive en réalité augmentée" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Wayfinder" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <title>Indoor Wayfinder</title>
@@ -32,7 +35,8 @@
   <!-- ==================== PWA Manifest & Icons ==================== -->
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png" />
-  <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/icons/icon-512.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/icon-180.png" />
 
   <!-- ==================== Import Map – Three.js r160 (pinned) ==================== -->
   <script type="importmap">
@@ -75,7 +79,7 @@
       /* --- High Contrast Typography --- */
       --color-text-primary: #f8fafc;
       --color-text-secondary: #94a3b8;
-      --color-text-muted: #64748b;
+      --color-text-muted: #8494a8;
       --color-text-inverse: #050e1f;
 
       /* --- Glass Borders & Focus Indicators --- */
@@ -133,6 +137,7 @@
     html, body {
       width: 100%;
       height: 100%;
+      height: 100dvh;
       overflow: hidden;
       font-family: var(--font-family-system);
       background-color: var(--color-bg-base);
@@ -147,6 +152,10 @@
       inset: 0;
       z-index: 0;
       overflow: hidden;
+    }
+
+    #scene-container canvas {
+      display: block;
     }
 
     /* UI Overlay wrapper */
@@ -271,7 +280,6 @@
       opacity: 1;
       transform: translateY(0);
       transition: opacity var(--transition-normal), transform var(--transition-normal);
-      cursor: pointer;
     }
 
     #status-toast.toast-hidden {
@@ -291,6 +299,41 @@
       color: var(--color-accent-primary);
       font-size: 11px;
       font-weight: 700;
+    }
+
+    /* ==========================================================================
+       4b. Render Failure Fallback
+       ========================================================================== */
+    .render-fallback {
+      position: absolute;
+      top: calc(104px + env(safe-area-inset-top, 0px));
+      left: var(--space-md);
+      right: var(--space-md);
+      z-index: 30;
+      padding: var(--space-sm) var(--space-md);
+      background: var(--color-alert-bg);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      border-radius: var(--radius-md);
+      color: var(--color-text-primary);
+      font-size: var(--font-size-xs);
+      line-height: 1.45;
+      pointer-events: auto;
+    }
+
+    .render-fallback strong {
+      color: var(--color-alert);
+    }
+
+    .render-fallback[hidden] {
+      display: none;
+    }
+
+    .noscript-fallback {
+      position: fixed;
+      top: calc(var(--space-md) + env(safe-area-inset-top, 0px));
+      left: var(--space-md);
+      right: var(--space-md);
+      z-index: 1000;
     }
 
     /* ==========================================================================
@@ -531,6 +574,11 @@
       background: linear-gradient(90deg, transparent, var(--color-accent-primary), transparent);
       box-shadow: 0 0 12px 2px var(--color-accent-primary);
       animation: sweepLaser 2.2s ease-in-out infinite;
+      animation-play-state: paused;
+    }
+
+    .scan-overlay.is-open .scan-sweep-line {
+      animation-play-state: running;
     }
 
     @keyframes sweepLaser {
@@ -726,6 +774,22 @@
       outline-offset: 2px;
     }
 
+    .destination-item[aria-pressed="true"] {
+      border-color: var(--color-border-highlight);
+      background: rgba(0, 210, 255, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(0, 210, 255, 0.2);
+    }
+
+    .destination-item[aria-pressed="true"] .dest-icon-badge {
+      background: var(--color-accent-primary);
+      color: var(--color-text-inverse);
+    }
+
+    .destination-item[aria-pressed="true"] .dest-icon-badge.alert-type {
+      background: var(--color-alert);
+      color: var(--color-text-primary);
+    }
+
     .dest-icon-badge {
       display: flex;
       align-items: center;
@@ -816,6 +880,12 @@
 </head>
 <body>
 
+  <noscript>
+    <div class="render-fallback noscript-fallback" role="alert">
+      <strong>JavaScript est requis.</strong> Activez JavaScript pour utiliser Indoor Wayfinder.
+    </div>
+  </noscript>
+
   <!-- ==================== Three.js Canvas Container ==================== -->
   <div id="scene-container" aria-hidden="true"></div>
 
@@ -839,11 +909,17 @@
       </div>
     </header>
 
+    <!-- 3D Render / Module Failure Fallback -->
+    <div id="render-fallback" class="render-fallback" role="alert" hidden>
+      <strong>Rendu 3D indisponible.</strong>
+      <span id="render-fallback-message">La scène 3D et le guidage AR ne sont pas disponibles. Rechargez la page pour réessayer.</span>
+    </div>
+
     <!-- Discreet Status Toast (Auto-dismissing) -->
     <div class="status-toast-wrapper">
-      <div id="status-toast" class="status-toast" role="status" aria-live="polite" title="Cliquer pour masquer">
+      <div id="status-toast" class="status-toast" role="status" aria-live="polite" aria-atomic="true">
         <span class="toast-indicator" aria-hidden="true">✓</span>
-        <span id="status-message">Scène 3D chargée</span>
+        <span id="status-message">Démarrage…</span>
       </div>
     </div>
 
@@ -851,7 +927,7 @@
     <div class="bottom-bar-container">
       <nav id="bottom-bar" aria-label="Actions de navigation">
         <!-- SCANNER Button (Primary) -->
-        <button id="btn-scan" class="action-btn btn-action-primary" type="button" aria-label="Ouvrir le scanner de repère QR">
+        <button id="btn-scan" class="action-btn btn-action-primary" type="button" aria-label="Ouvrir le scanner de repère QR" aria-haspopup="dialog" aria-controls="scan-overlay" aria-expanded="false">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7"></rect>
             <rect x="14" y="3" width="7" height="7"></rect>
@@ -862,7 +938,7 @@
         </button>
 
         <!-- DESTINATION Button (Secondary) -->
-        <button id="btn-destination" class="action-btn btn-action-secondary" type="button" aria-label="Ouvrir la liste des salles et destinations">
+        <button id="btn-destination" class="action-btn btn-action-secondary" type="button" aria-label="Ouvrir la liste des salles et destinations" aria-haspopup="dialog" aria-controls="destination-sheet" aria-expanded="false">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path>
             <circle cx="12" cy="10" r="3"></circle>
@@ -875,7 +951,7 @@
   </div>
 
   <!-- ==================== Mockup Screen 1: Scan Overlay ==================== -->
-  <div id="scan-overlay" class="scan-overlay" role="dialog" aria-modal="true" aria-labelledby="scan-title" aria-hidden="true">
+  <div id="scan-overlay" class="scan-overlay" role="dialog" aria-modal="true" aria-labelledby="scan-title" aria-hidden="true" inert>
     <div class="scan-top-bar">
       <div id="scan-title" class="scan-title-text">Scanner un repère AR</div>
       <button id="btn-close-scan" class="icon-btn" type="button" aria-label="Fermer le scanner">
@@ -908,7 +984,7 @@
   <!-- ==================== Mockup Screen 2: Destination Bottom Sheet ==================== -->
   <div id="sheet-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
 
-  <section id="destination-sheet" class="destination-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true">
+  <section id="destination-sheet" class="destination-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true" inert>
     <!-- Drag pill handle -->
     <div id="sheet-drag-handle-bar" class="sheet-drag-handle-bar">
       <div class="sheet-drag-pill"></div>
@@ -945,22 +1021,22 @@
     </div>
 
     <!-- Scrollable Room List -->
-    <div id="destination-list-scroll" class="destination-list-scroll" role="list">
+    <div id="destination-list-scroll" class="destination-list-scroll" role="group" aria-label="Destinations disponibles">
       <!-- Item: Salle B12 -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="room-b12" data-destination-name="Salle B12">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="room-b12" data-destination-name="Salle B12">
         <div class="dest-icon-badge" aria-hidden="true">💻</div>
         <div class="dest-details">
           <div class="dest-name">Salle B12</div>
           <div class="dest-description">Laboratoire Réseaux & Télécoms</div>
         </div>
         <div class="dest-meta">
-          <span class="dest-tag">Étage 1</span>
+          <span class="dest-tag">RDC</span>
           <span class="dest-distance">25 m</span>
         </div>
       </article>
 
       <!-- Item: Sortie de secours Nord -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="exit-north" data-destination-name="Sortie de secours Nord">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="exit-north" data-destination-name="Sortie de secours Nord">
         <div class="dest-icon-badge alert-type" aria-hidden="true">🚪</div>
         <div class="dest-details">
           <div class="dest-name">Sortie de secours Nord</div>
@@ -973,7 +1049,7 @@
       </article>
 
       <!-- Item: Amphi A -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="amphi-a" data-destination-name="Amphi A">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="amphi-a" data-destination-name="Amphi A">
         <div class="dest-icon-badge" aria-hidden="true">🎓</div>
         <div class="dest-details">
           <div class="dest-name">Amphi A</div>
@@ -986,7 +1062,7 @@
       </article>
 
       <!-- Item: Cafétéria Centrale -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="cafeteria" data-destination-name="Cafétéria Centrale">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="cafeteria" data-destination-name="Cafétéria Centrale">
         <div class="dest-icon-badge" aria-hidden="true">☕</div>
         <div class="dest-details">
           <div class="dest-name">Cafétéria Centrale</div>
@@ -999,7 +1075,7 @@
       </article>
 
       <!-- Item: Accueil & Secrétariat -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="reception" data-destination-name="Accueil & Secrétariat">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="reception" data-destination-name="Accueil & Secrétariat">
         <div class="dest-icon-badge" aria-hidden="true">🏢</div>
         <div class="dest-details">
           <div class="dest-name">Accueil & Secrétariat</div>
@@ -1012,7 +1088,7 @@
       </article>
 
       <!-- Item: Sanitaires RDC -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="restrooms" data-destination-name="Sanitaires RDC">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="restrooms" data-destination-name="Sanitaires RDC">
         <div class="dest-icon-badge" aria-hidden="true">🚻</div>
         <div class="dest-details">
           <div class="dest-name">Sanitaires RDC</div>
@@ -1024,13 +1100,34 @@
         </div>
       </article>
 
-      <div id="no-destinations-found" class="no-results-msg">
+      <div id="no-destinations-found" class="no-results-msg" role="status">
         Aucune salle ne correspond à votre recherche.
       </div>
     </div>
   </section>
 
   <!-- ==================== Main JavaScript Entrypoint ==================== -->
+  <script>
+    // Reveal the fallback if the module graph or the CDN fails to load.
+    (function () {
+      function showFallback() {
+        var fallback = document.getElementById('render-fallback');
+        var message = document.getElementById('render-fallback-message');
+        if (message) {
+          message.textContent = "Le moteur 3D n'a pas pu être chargé. Vérifiez votre connexion puis rechargez la page.";
+        }
+        if (fallback) fallback.hidden = false;
+      }
+      window.addEventListener('error', function (event) {
+        if (event.target && event.target.tagName === 'SCRIPT') {
+          showFallback();
+        } else if (event.error) {
+          showFallback();
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', showFallback);
+    })();
+  </script>
   <script type="module" src="src/main.js"></script>
 
 </body>

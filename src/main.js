@@ -5,14 +5,16 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-04
- * Version      : 1.1.0 (Week 1 – Rotating cube with edges, arrow reserved)
+ * Modified     : 2026-11-05
+ * Version      : 1.2.0 (Sprint 1 audit – accessibility, offline, AR prep)
  * Description  : Main application controller. Initializes the Three.js 3D
  *                scene (rotating cube with visible edges, ground depth grid
  *                with fog, radial ground glow, ambient + directional lights,
  *                responsive viewport handling, prefers-reduced-motion) and
- *                powers the mobile-first UI layer (status toast, network
- *                monitor, scan overlay, destination bottom sheet).
+ *                powers the mobile-first UI layer (accessible dialogs,
+ *                status toast, network monitor, scan overlay, destination
+ *                sheet), with graceful 3D fallback and Service Worker
+ *                registration.
  * ==========================================================================
  */
 
@@ -40,6 +42,15 @@ let toastDismissTimerId = null;
 
 /** @type {HTMLDivElement} Host element for the Three.js canvas */
 const sceneContainer = document.getElementById('scene-container');
+
+/** @type {HTMLDivElement} UI overlay wrapping header, toast, and action bar */
+const uiOverlayElement = document.getElementById('ui-overlay');
+
+/** @type {HTMLDivElement} Persistent banner shown when the 3D renderer fails */
+const renderFallbackElement = document.getElementById('render-fallback');
+
+/** @type {HTMLSpanElement} Message inside the 3D failure banner */
+const renderFallbackMessageElement = document.getElementById('render-fallback-message');
 
 /** @type {HTMLDivElement} Floating status toast pill */
 const statusToastElement = document.getElementById('status-toast');
@@ -149,13 +160,15 @@ function createCamera() {
 function createRenderer(container) {
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
-    alpha: false,
+    alpha: true,
     powerPreference: 'high-performance'
   });
 
   // Strict pixel ratio ceiling at 2 for mobile efficiency
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // Keep the canvas transparent where nothing is drawn (required in AR mode)
+  renderer.setClearColor(0x000000, 0);
 
   container.appendChild(renderer.domElement);
 
@@ -211,53 +224,51 @@ function createCube() {
 /**
  * createArrow
  * -----------
- * Generates a procedural 3D waypoint arrow (cylinder shaft + cone tip)
- * combined into a single group. Uses MeshStandardMaterial with cyan accent
- * color, subtle metallic sheen, and emissive glow.
+ * Builds a flat, forward-pointing floor arrow from an extruded 2D shape.
+ * The group origin is the arrow tail at floor level; the tip points along
+ * +Z. An AR caller can place the group at a floor hit pose and yaw it
+ * toward the next node with `rotation.y = Math.atan2(dx, dz)`.
  *
  * NOTE: This function is NOT called in the current build. It is reserved
- * for Step 4 (WebXR) where the arrow will replace the cube as the live
- * navigation indicator anchored to the AR scene.
+ * for Sprint 4 (WebXR) where the arrow replaces the cube as the live
+ * navigation indicator.
  *
- * @returns {THREE.Group} The arrow anchor group.
+ * @returns {THREE.Group} Arrow group with its origin at floor level.
  */
 function createArrow() {
   const arrowAnchor = new THREE.Group();
   arrowAnchor.name = 'arrowAnchor';
 
-  // Metallic cyan accent material matching design system
-  const arrowMaterial = new THREE.MeshStandardMaterial({
+  // Flat arrow outline in the XY plane, pointing along +Y (1 metre long)
+  const arrowShape = new THREE.Shape();
+  arrowShape.moveTo(-0.08, 0);
+  arrowShape.lineTo(-0.08, 0.55);
+  arrowShape.lineTo(-0.22, 0.55);
+  arrowShape.lineTo(0, 1.0);
+  arrowShape.lineTo(0.22, 0.55);
+  arrowShape.lineTo(0.08, 0.55);
+  arrowShape.lineTo(0.08, 0);
+  arrowShape.closePath();
+
+  // Extrude 4 cm, then lay the shape on the XZ floor plane (+Y becomes +Z)
+  const arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, {
+    depth: 0.04,
+    bevelEnabled: false,
+    steps: 1,
+    curveSegments: 1
+  });
+  arrowGeometry.rotateX(Math.PI / 2);
+  arrowGeometry.translate(0, 0.04, 0);
+
+  // Unlit material: readable in AR without scene lights
+  const arrowMaterial = new THREE.MeshBasicMaterial({
     color: 0x00d2ff,
-    roughness: 0.28,
-    metalness: 0.65,
-    emissive: 0x003d59,
-    emissiveIntensity: 0.35,
+    side: THREE.DoubleSide,
+    toneMapped: false
   });
 
-  // Arrow shaft: cylinder geometry
-  const shaftRadius = 0.13;
-  const shaftHeight = 0.9;
-  const shaftGeometry = new THREE.CylinderGeometry(
-    shaftRadius,
-    shaftRadius,
-    shaftHeight,
-    32
-  );
-  const shaftMesh = new THREE.Mesh(shaftGeometry, arrowMaterial);
-  shaftMesh.position.set(0, -0.25, 0);
-  arrowAnchor.add(shaftMesh);
-
-  // Arrow head: cone geometry
-  const headRadius = 0.38;
-  const headHeight = 0.7;
-  const headGeometry = new THREE.ConeGeometry(headRadius, headHeight, 32);
-  const headMesh = new THREE.Mesh(headGeometry, arrowMaterial);
-  headMesh.position.set(0, 0.55, 0);
-  arrowAnchor.add(headMesh);
-
-  // Position arrow at comfortable eye level and tilt slightly forward
-  arrowAnchor.position.set(0, 1.15, 0);
-  arrowAnchor.rotation.x = 0.25;
+  const arrowMesh = new THREE.Mesh(arrowGeometry, arrowMaterial);
+  arrowAnchor.add(arrowMesh);
 
   return arrowAnchor;
 }
@@ -369,6 +380,7 @@ function createGridHelper(scene) {
 function handleWindowResize(camera, renderer) {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
@@ -379,9 +391,12 @@ function handleWindowResize(camera, renderer) {
 /**
  * startAnimationLoop
  * ------------------
- * Coordinates the requestAnimationFrame loop. The cube rotates slowly on Y
- * and slightly on X while floating up and down. The ground shadow breathes
- * in sync. Respects prefers-reduced-motion.
+ * Registers the frame callback with Three.js. `setAnimationLoop` uses
+ * requestAnimationFrame in normal mode and the XR frame loop inside a
+ * WebXR session, which is required for immersive-ar rendering. The cube
+ * rotates slowly on Y and slightly on X while floating up and down. The
+ * ground shadow breathes in sync. Rendering is skipped while a modal
+ * overlay covers the scene. Respects prefers-reduced-motion.
  *
  * @param {THREE.WebGLRenderer} renderer – Active renderer.
  * @param {THREE.Scene} scene – Active scene.
@@ -401,12 +416,29 @@ function startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh
   const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   /**
+   * isSceneCoveredByUi
+   * ------------------
+   * Returns true while a full-screen modal hides the 3D scene.
+   *
+   * @returns {boolean} Whether rendering can be skipped for this frame.
+   */
+  function isSceneCoveredByUi() {
+    return Boolean(
+      (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) ||
+      (destinationSheetElement && destinationSheetElement.classList.contains('is-open'))
+    );
+  }
+
+  /**
    * animate (inner)
    * ---------------
-   * Single frame callback for requestAnimationFrame.
+   * Single frame callback for the Three.js animation loop.
    */
   function animate() {
-    requestAnimationFrame(animate);
+    // Keep the last frame on screen while an overlay is open.
+    if (isSceneCoveredByUi()) {
+      return;
+    }
 
     const elapsedTime = clock.getElapsedTime();
 
@@ -430,8 +462,8 @@ function startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh
     renderer.render(scene, camera);
   }
 
-  // Kick off the loop
-  animate();
+  // Kick off the loop (rAF normally, XR frames when a WebXR session is active)
+  renderer.setAnimationLoop(animate);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +496,88 @@ function showStatusToast(message, durationMs = 4200) {
 }
 
 // ---------------------------------------------------------------------------
+// Accessibility: Modal Focus Management
+// ---------------------------------------------------------------------------
+
+/**
+ * showRenderFallback
+ * ------------------
+ * Reveals the persistent 3D failure banner with a readable explanation.
+ *
+ * @param {string} message – User-facing fallback message.
+ */
+function showRenderFallback(message) {
+  if (renderFallbackMessageElement && message) {
+    renderFallbackMessageElement.textContent = message;
+  }
+  if (renderFallbackElement) {
+    renderFallbackElement.hidden = false;
+  }
+}
+
+/** Selector for elements that can receive keyboard focus. */
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])'
+].join(', ');
+
+/**
+ * getTabbableElements
+ * -------------------
+ * Returns the visible, non-inert focusable elements inside a container.
+ *
+ * @param {HTMLElement} container – Dialog or panel to inspect.
+ * @returns {HTMLElement[]} Tabbable elements in DOM order.
+ */
+function getTabbableElements(container) {
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (element.closest('[inert]')) return false;
+    if (window.getComputedStyle(element).visibility === 'hidden') return false;
+    return element.getClientRects().length > 0;
+  });
+}
+
+/**
+ * trapFocus
+ * ---------
+ * Keeps Tab and Shift+Tab navigation inside an open dialog.
+ *
+ * @param {KeyboardEvent} event – Keydown event.
+ * @param {HTMLElement} container – Open dialog.
+ */
+function trapFocus(event, container) {
+  if (event.key !== 'Tab') return;
+
+  const tabbableElements = getTabbableElements(container);
+  if (tabbableElements.length === 0) {
+    event.preventDefault();
+    return;
+  }
+
+  const firstElement = tabbableElements[0];
+  const lastElement = tabbableElements[tabbableElements.length - 1];
+  const activeElement = document.activeElement;
+
+  if (!container.contains(activeElement)) {
+    event.preventDefault();
+    (event.shiftKey ? lastElement : firstElement).focus();
+    return;
+  }
+
+  if (event.shiftKey && activeElement === firstElement) {
+    event.preventDefault();
+    lastElement.focus();
+  } else if (!event.shiftKey && activeElement === lastElement) {
+    event.preventDefault();
+    firstElement.focus();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // UI Interactions: Scan Reticle Overlay Mockup
 // ---------------------------------------------------------------------------
 
@@ -474,8 +588,13 @@ function showStatusToast(message, durationMs = 4200) {
  */
 function openScanOverlay() {
   if (!scanOverlayElement) return;
+
+  if (uiOverlayElement) uiOverlayElement.inert = true;
+  if (destinationSheetElement) destinationSheetElement.inert = true;
+  scanOverlayElement.inert = false;
   scanOverlayElement.classList.add('is-open');
   scanOverlayElement.setAttribute('aria-hidden', 'false');
+  if (scanTriggerButton) scanTriggerButton.setAttribute('aria-expanded', 'true');
   if (closeScanButton) {
     closeScanButton.focus();
   }
@@ -488,9 +607,13 @@ function openScanOverlay() {
  */
 function closeScanOverlay() {
   if (!scanOverlayElement) return;
+
   scanOverlayElement.classList.remove('is-open');
   scanOverlayElement.setAttribute('aria-hidden', 'true');
+  scanOverlayElement.inert = true;
+  if (uiOverlayElement) uiOverlayElement.inert = false;
   if (scanTriggerButton) {
+    scanTriggerButton.setAttribute('aria-expanded', 'false');
     scanTriggerButton.focus();
   }
 }
@@ -507,11 +630,16 @@ function closeScanOverlay() {
 function openDestinationSheet() {
   if (!destinationSheetElement || !sheetBackdropElement) return;
 
+  if (uiOverlayElement) uiOverlayElement.inert = true;
+  if (scanOverlayElement) scanOverlayElement.inert = true;
+  destinationSheetElement.inert = false;
+
   sheetBackdropElement.classList.add('is-open');
   sheetBackdropElement.setAttribute('aria-hidden', 'false');
 
   destinationSheetElement.classList.add('is-open');
   destinationSheetElement.setAttribute('aria-hidden', 'false');
+  if (destinationTriggerButton) destinationTriggerButton.setAttribute('aria-expanded', 'true');
 
   if (destinationSearchInput) {
     destinationSearchInput.value = '';
@@ -529,13 +657,18 @@ function openDestinationSheet() {
 function closeDestinationSheet() {
   if (!destinationSheetElement || !sheetBackdropElement) return;
 
+  destinationSheetElement.style.transform = '';
+
   sheetBackdropElement.classList.remove('is-open');
   sheetBackdropElement.setAttribute('aria-hidden', 'true');
 
   destinationSheetElement.classList.remove('is-open');
   destinationSheetElement.setAttribute('aria-hidden', 'true');
+  destinationSheetElement.inert = true;
+  if (uiOverlayElement) uiOverlayElement.inert = false;
 
   if (destinationTriggerButton) {
+    destinationTriggerButton.setAttribute('aria-expanded', 'false');
     destinationTriggerButton.focus();
   }
 }
@@ -575,6 +708,14 @@ function filterDestinations(query) {
  */
 function selectDestination(destinationId, destinationName) {
   currentDestinationId = destinationId;
+
+  if (destinationListScroll) {
+    destinationListScroll.querySelectorAll('.destination-item').forEach((item) => {
+      const isSelected = item.getAttribute('data-destination-id') === destinationId;
+      item.setAttribute('aria-pressed', String(isSelected));
+    });
+  }
+
   showStatusToast(`Destination : ${destinationName}`, 4000);
   closeDestinationSheet();
 }
@@ -593,29 +734,36 @@ function setupTouchDismissSheet(sheetElement, handleBarElement) {
   let touchStartY = 0;
   let currentTouchY = 0;
 
+  /** Resets the drag transform and cached touch positions. */
+  function resetDragState() {
+    sheetElement.style.transform = '';
+    touchStartY = 0;
+    currentTouchY = 0;
+  }
+
   handleBarElement.addEventListener('touchstart', (event) => {
     touchStartY = event.touches[0].clientY;
+    currentTouchY = touchStartY;
   }, { passive: true });
 
   handleBarElement.addEventListener('touchmove', (event) => {
     currentTouchY = event.touches[0].clientY;
     const deltaY = currentTouchY - touchStartY;
-    if (deltaY > 0) {
-      // Provide direct downward follow feedback
-      sheetElement.style.transform = `translateY(${Math.min(deltaY, 200)}px)`;
-    }
+    sheetElement.style.transform = deltaY > 0
+      ? `translateY(${Math.min(deltaY, 200)}px)`
+      : '';
   }, { passive: true });
 
   handleBarElement.addEventListener('touchend', () => {
-    const deltaY = currentTouchY - touchStartY;
-    sheetElement.style.transform = '';
+    const shouldDismiss = currentTouchY - touchStartY > 60;
+    resetDragState();
     // If pulled down further than 60px, dismiss
-    if (deltaY > 60) {
+    if (shouldDismiss) {
       closeDestinationSheet();
     }
-    touchStartY = 0;
-    currentTouchY = 0;
   });
+
+  handleBarElement.addEventListener('touchcancel', resetDragState);
 }
 
 // ---------------------------------------------------------------------------
@@ -651,18 +799,7 @@ function updateNetworkStatus() {
  * Binds all interactive click, key, touch, and search listeners cleanly.
  */
 function initUIEventListeners() {
-  // 1. Toast dismissal on click
-  if (statusToastElement) {
-    statusToastElement.addEventListener('click', () => {
-      statusToastElement.classList.add('toast-hidden');
-      if (toastDismissTimerId) {
-        clearTimeout(toastDismissTimerId);
-        toastDismissTimerId = null;
-      }
-    });
-  }
-
-  // 2. Scan overlay triggers
+  // 1. Scan overlay triggers
   if (scanTriggerButton) {
     scanTriggerButton.addEventListener('click', openScanOverlay);
   }
@@ -670,7 +807,7 @@ function initUIEventListeners() {
     closeScanButton.addEventListener('click', closeScanOverlay);
   }
 
-  // 3. Destination bottom sheet triggers
+  // 2. Destination bottom sheet triggers
   if (destinationTriggerButton) {
     destinationTriggerButton.addEventListener('click', openDestinationSheet);
   }
@@ -681,17 +818,17 @@ function initUIEventListeners() {
     sheetBackdropElement.addEventListener('click', closeDestinationSheet);
   }
 
-  // 4. Mobile swipe down gesture to dismiss sheet
+  // 3. Mobile swipe down gesture to dismiss sheet
   setupTouchDismissSheet(destinationSheetElement, sheetDragHandleBar);
 
-  // 5. Destination search input
+  // 4. Destination search input
   if (destinationSearchInput) {
     destinationSearchInput.addEventListener('input', (event) => {
       filterDestinations(event.target.value);
     });
   }
 
-  // 6. Destination items selection
+  // 5. Destination items selection
   if (destinationListScroll) {
     destinationListScroll.addEventListener('click', (event) => {
       const item = event.target.closest('.destination-item');
@@ -715,7 +852,7 @@ function initUIEventListeners() {
     });
   }
 
-  // 7. Global keyboard accessibility (Escape closes active modal)
+  // 6. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
@@ -723,13 +860,38 @@ function initUIEventListeners() {
       } else if (destinationSheetElement && destinationSheetElement.classList.contains('is-open')) {
         closeDestinationSheet();
       }
+    } else if (event.key === 'Tab') {
+      if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
+        trapFocus(event, scanOverlayElement);
+      } else if (destinationSheetElement && destinationSheetElement.classList.contains('is-open')) {
+        trapFocus(event, destinationSheetElement);
+      }
     }
   });
 
-  // 8. Online/Offline events
+  // 7. Online/Offline events
   window.addEventListener('online', updateNetworkStatus);
   window.addEventListener('offline', updateNetworkStatus);
   updateNetworkStatus();
+}
+
+// ---------------------------------------------------------------------------
+// PWA: Service Worker Registration
+// ---------------------------------------------------------------------------
+
+/**
+ * registerServiceWorker
+ * ---------------------
+ * Registers the offline app-shell worker after the page has loaded.
+ */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((error) => {
+      console.warn('[Indoor Wayfinder] Service worker registration failed:', error);
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -744,40 +906,56 @@ function initUIEventListeners() {
  * UI handlers.
  */
 function init() {
-  // 1. Build core Three.js components
-  const scene = createScene();
-  const camera = createCamera();
-  const renderer = createRenderer(sceneContainer);
-
-  // 2. Populate 3D scene elements
-  const cubeGroup = createCube();
-  scene.add(cubeGroup);
-
-  const groundShadowMesh = createGroundShadow();
-  scene.add(groundShadowMesh);
-
-  createLighting(scene);
-  createGridHelper(scene);
-
-  // 3. React to viewport resizing & orientation changes
-  window.addEventListener('resize', () => {
-    handleWindowResize(camera, renderer);
-  });
-  window.addEventListener('orientationchange', () => {
-    setTimeout(() => handleWindowResize(camera, renderer), 100);
-  });
-
-  // 4. Start 3D animation loop
-  startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh);
-
-  // 5. Initialize UI overlays & interactions
+  // 1. Bind UI first so the shell remains usable if WebGL is unavailable
   initUIEventListeners();
 
-  // 6. Display initial discrete status toast
-  showStatusToast('Scène 3D initialisée ✓', 4000);
+  try {
+    // 2. Build core Three.js components
+    const scene = createScene();
+    const camera = createCamera();
+    const renderer = createRenderer(sceneContainer);
 
-  console.log('[Indoor Wayfinder] v1.1.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    // 3. Populate 3D scene elements
+    const cubeGroup = createCube();
+    scene.add(cubeGroup);
+
+    const groundShadowMesh = createGroundShadow();
+    scene.add(groundShadowMesh);
+
+    createLighting(scene);
+    createGridHelper(scene);
+
+    // 4. React to viewport resizing & orientation changes
+    window.addEventListener('resize', () => {
+      handleWindowResize(camera, renderer);
+    });
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => handleWindowResize(camera, renderer), 100);
+    });
+    window.visualViewport?.addEventListener('resize', () => {
+      handleWindowResize(camera, renderer);
+    });
+
+    renderer.domElement.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault();
+      renderer.setAnimationLoop(null);
+      showRenderFallback('Le contexte 3D a été perdu. Rechargez la page pour réessayer.');
+    });
+
+    // 5. Start 3D animation loop
+    startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh);
+
+    // 6. Display initial discrete status toast
+    showStatusToast('Scène 3D initialisée ✓', 4000);
+
+    console.log('[Indoor Wayfinder] v1.2.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+  } catch (error) {
+    console.error('[Indoor Wayfinder] 3D initialization failed:', error);
+    showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
+    showStatusToast('Mode dégradé : rendu 3D indisponible', 5000);
+  }
 }
 
 // Boot application
 init();
+registerServiceWorker();
