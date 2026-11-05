@@ -5,14 +5,16 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-04
- * Version      : 1.1.0 (Week 1 – Rotating cube with edges, arrow reserved)
+ * Modified     : 2026-11-05
+ * Version      : 1.2.0 (Sprint 1 audit – accessibility, offline, AR prep)
  * Description  : Main application controller. Initializes the Three.js 3D
  *                scene (rotating cube with visible edges, ground depth grid
  *                with fog, radial ground glow, ambient + directional lights,
  *                responsive viewport handling, prefers-reduced-motion) and
- *                powers the mobile-first UI layer (status toast, network
- *                monitor, scan overlay, destination bottom sheet).
+ *                powers the mobile-first UI layer (accessible dialogs,
+ *                status toast, network monitor, scan overlay, destination
+ *                sheet), with graceful 3D fallback and Service Worker
+ *                registration.
  * ==========================================================================
  */
 
@@ -944,7 +946,7 @@ function init() {
     // 6. Display initial discrete status toast
     showStatusToast('Scène 3D initialisée ✓', 4000);
 
-    console.log('[Indoor Wayfinder] v1.1.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    console.log('[Indoor Wayfinder] v1.2.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
   } catch (error) {
     console.error('[Indoor Wayfinder] 3D initialization failed:', error);
     showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
