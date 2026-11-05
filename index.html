@@ -565,6 +565,11 @@
       background: linear-gradient(90deg, transparent, var(--color-accent-primary), transparent);
       box-shadow: 0 0 12px 2px var(--color-accent-primary);
       animation: sweepLaser 2.2s ease-in-out infinite;
+      animation-play-state: paused;
+    }
+
+    .scan-overlay.is-open .scan-sweep-line {
+      animation-play-state: running;
     }
 
     @keyframes sweepLaser {
