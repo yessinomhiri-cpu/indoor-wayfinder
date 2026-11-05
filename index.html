@@ -271,7 +271,6 @@
       opacity: 1;
       transform: translateY(0);
       transition: opacity var(--transition-normal), transform var(--transition-normal);
-      cursor: pointer;
     }
 
     #status-toast.toast-hidden {
@@ -857,7 +856,7 @@
 
     <!-- Discreet Status Toast (Auto-dismissing) -->
     <div class="status-toast-wrapper">
-      <div id="status-toast" class="status-toast" role="status" aria-live="polite" title="Cliquer pour masquer">
+      <div id="status-toast" class="status-toast" role="status" aria-live="polite" aria-atomic="true">
         <span class="toast-indicator" aria-hidden="true">✓</span>
         <span id="status-message">Scène 3D chargée</span>
       </div>
@@ -1040,7 +1039,7 @@
         </div>
       </article>
 
-      <div id="no-destinations-found" class="no-results-msg">
+      <div id="no-destinations-found" class="no-results-msg" role="status">
         Aucune salle ne correspond à votre recherche.
       </div>
     </div>

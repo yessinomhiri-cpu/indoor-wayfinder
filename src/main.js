@@ -745,18 +745,7 @@ function updateNetworkStatus() {
  * Binds all interactive click, key, touch, and search listeners cleanly.
  */
 function initUIEventListeners() {
-  // 1. Toast dismissal on click
-  if (statusToastElement) {
-    statusToastElement.addEventListener('click', () => {
-      statusToastElement.classList.add('toast-hidden');
-      if (toastDismissTimerId) {
-        clearTimeout(toastDismissTimerId);
-        toastDismissTimerId = null;
-      }
-    });
-  }
-
-  // 2. Scan overlay triggers
+  // 1. Scan overlay triggers
   if (scanTriggerButton) {
     scanTriggerButton.addEventListener('click', openScanOverlay);
   }
@@ -764,7 +753,7 @@ function initUIEventListeners() {
     closeScanButton.addEventListener('click', closeScanOverlay);
   }
 
-  // 3. Destination bottom sheet triggers
+  // 2. Destination bottom sheet triggers
   if (destinationTriggerButton) {
     destinationTriggerButton.addEventListener('click', openDestinationSheet);
   }
@@ -775,17 +764,17 @@ function initUIEventListeners() {
     sheetBackdropElement.addEventListener('click', closeDestinationSheet);
   }
 
-  // 4. Mobile swipe down gesture to dismiss sheet
+  // 3. Mobile swipe down gesture to dismiss sheet
   setupTouchDismissSheet(destinationSheetElement, sheetDragHandleBar);
 
-  // 5. Destination search input
+  // 4. Destination search input
   if (destinationSearchInput) {
     destinationSearchInput.addEventListener('input', (event) => {
       filterDestinations(event.target.value);
     });
   }
 
-  // 6. Destination items selection
+  // 5. Destination items selection
   if (destinationListScroll) {
     destinationListScroll.addEventListener('click', (event) => {
       const item = event.target.closest('.destination-item');
@@ -809,7 +798,7 @@ function initUIEventListeners() {
     });
   }
 
-  // 7. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
+  // 6. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
@@ -826,7 +815,7 @@ function initUIEventListeners() {
     }
   });
 
-  // 8. Online/Offline events
+  // 7. Online/Offline events
   window.addEventListener('online', updateNetworkStatus);
   window.addEventListener('offline', updateNetworkStatus);
   updateNetworkStatus();
