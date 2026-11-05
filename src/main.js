@@ -872,6 +872,25 @@ function initUIEventListeners() {
 }
 
 // ---------------------------------------------------------------------------
+// PWA: Service Worker Registration
+// ---------------------------------------------------------------------------
+
+/**
+ * registerServiceWorker
+ * ---------------------
+ * Registers the offline app-shell worker after the page has loaded.
+ */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((error) => {
+      console.warn('[Indoor Wayfinder] Service worker registration failed:', error);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
 
@@ -935,3 +954,4 @@ function init() {
 
 // Boot application
 init();
+registerServiceWorker();
