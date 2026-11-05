@@ -9,8 +9,9 @@
 | **Team** | Yassine Mhiri · Oussema Harrabi · Amin Jarbaoui |
 | **Supervisor** | Mohamed Bécha Kaaniche |
 | **Brief** | Cahier des charges v1.0 — 24 October 2026 |
-| **App version** | `v1.1.0` (commit `c3308e4`) |
-| **Sprint** | 1 of 6 — PWA shell + 3D scene |
+| **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
+| **App version** | `v1.2.0` (Sprint 1 audit) |
+| **Sprint** | 1 of 6 — PWA shell + 3D scene + hardening |
 | **Last updated** | 2026-11-05 |
 
 ---
@@ -140,19 +141,20 @@ The scan and destination flows are **UI mockups**: no camera, no QR decoding, no
 
 ## What is already built
 
-Sprint 1 delivered a working **PWA shell and a Three.js 3D scene** (v1.1.0, 4 November 2026).
+Sprint 1 delivered a working **PWA shell and a Three.js 3D scene**, hardened in **v1.2.0** for accessibility, failure handling and offline use.
 
 ### 1. Mobile-first PWA shell — `index.html`
 
 - French UI, dark glassmorphism design system built with CSS custom properties.
-- Responsive layout with safe-area handling for notched phones.
+- Responsive layout with safe-area handling, `100dvh` and visual-viewport support.
 - Header with the app brand and a live **online/offline badge**.
-- Discreet auto-dismissing **status toast**.
+- Discreet auto-dismissing **status toast** (informational live region).
 - Floating bottom action bar with two actions: **SCANNER** and **DESTINATION**.
 - **Scan overlay mockup**: viewfinder corners, animated laser sweep line, guidance text.
 - **Destination bottom sheet**: six hard-coded rooms, live text search, swipe-down-to-dismiss, Escape/backdrop close, keyboard support.
-- Accessibility touches: ARIA roles, focus states, `prefers-reduced-motion` support.
-- `manifest.json` with app name, colours, orientation, start URL and icon declarations.
+- Accessible dialogs: `inert` background, focus trap, `aria-expanded` triggers, Escape to close, and focus restoration.
+- Pinch zoom enabled; muted text contrast raised above WCAG AA.
+- PWA icons, manifest metadata and an offline Service Worker.
 
 ### 2. Three.js scene — `src/main.js`
 
@@ -160,20 +162,28 @@ Sprint 1 delivered a working **PWA shell and a Three.js 3D scene** (v1.1.0, 4 No
 - Dark scene with exponential fog and a ground grid that fades into the horizon.
 - Rotating **cube with visible edges** — a deliberate Week 1 placeholder for the navigation arrow.
 - Procedural radial ground glow, ambient + directional lighting (2 lights, mobile-friendly).
-- Render loop with floating/rotation animation, disabled under `prefers-reduced-motion`.
-- Resize and orientation-change handling; pixel ratio capped at 2.
-- `createArrow()` is already written but **not called**: it is the reserved 3D waypoint arrow (cylinder + cone) for the WebXR sprint.
+- Render loop driven by `renderer.setAnimationLoop`, disabled under `prefers-reduced-motion`; rendering pauses while a modal covers the scene.
+- Resize, orientation-change and `visualViewport` handling; pixel ratio capped at 2.
+- `createArrow()` is written but **not called**: it is now a flat, 1 m, floor-anchored arrow pointing along +Z, ready for the WebXR sprint.
+- Graceful degradation: WebGL failure, CDN failure and context loss surface a persistent banner instead of killing the UI.
 - Application state placeholders: `currentQrNodeId`, `currentDestinationId`.
-- Destination selection currently only stores the ID and shows a toast.
 
-### 3. What was verified (2026-11-05)
+### 3. PWA and offline — `manifest.json`, `sw.js`, `assets/icons/`
 
-- Page loads with no JavaScript errors.
-- The Three.js canvas renders (`Three.js r160` confirmed in the console).
-- The scan overlay opens and closes.
-- Destination search filters the list; selecting a room updates the toast.
-- The online/offline badge reflects `navigator.onLine`.
-- Missing icon requests are the only failing requests (`assets/icons/icon-192.png`).
+- Four icon variants: 192/512 `any` and 192/512 `maskable`, plus a 180 Apple touch icon.
+- Service Worker precaches the shell, icons and pinned Three.js module.
+- Navigations are network-first with a cached index fallback; static assets are cache-first.
+- Offline reload verified after the first controlled load.
+
+### 4. What was verified (2026-11-05)
+
+- Page loads with no JavaScript errors; Three.js r160 renders.
+- Closed dialogs are skipped by Tab; Tab stays trapped inside open dialogs; Escape restores focus.
+- Destination search filters the list; selection is exposed with `aria-pressed`.
+- Forced WebGL failure shows the fallback banner while the UI remains usable.
+- CDN failure shows the fallback banner.
+- Offline reload is served from the Service Worker with the canvas intact.
+- Manifest is valid, all icons return 200, and no icon requests fail.
 
 ---
 
@@ -191,25 +201,25 @@ This is the honest state of the repository as of **2026-11-05**:
 | QR localization | ⬜ Not started | `src/scanner.js` does not exist |
 | Building graph + shortest path | ⬜ Not started | `src/navigation.js` and `assets/building.json` do not exist |
 | WebXR `immersive-ar` + hit testing | ⬜ Not started | No XR session yet |
-| 3D arrow in AR | 🟡 Reserved | `createArrow()` exists but is never called |
+| 3D arrow in AR | 🟡 Reserved | `createArrow()` is floor-ready but never called; no XR session |
 | Route updates after each scan | ⬜ Not started | — |
 | Arrival vibration / wake lock | ⬜ Not started | Planned Sprint 5 |
-| Service Worker / offline | ⬜ Not started | `sw.js` does not exist |
-| PWA installability | ⬜ Blocked | Icons are referenced but missing; no Service Worker |
+| Service Worker / offline | ✅ Done | `sw.js`; offline reload verified |
+| PWA installability | ✅ Ready | Manifest + icons + Service Worker; HTTPS/localhost |
+| Accessibility & failure handling | ✅ Done | Inert dialogs, focus trap, zoom, contrast, WebGL/CDN fallback |
 | GitHub Pages deployment | ⬜ Not enabled | `https://yessinomhiri-cpu.github.io/indoor-wayfinder/` returns 404 |
-| Technical documentation / user manual | ⬜ Not started | `/docs` does not exist |
+| Technical documentation / user manual | ⬜ Not started | `/docs` does not exist; README and CHANGELOG are current |
 | Demo video | ⬜ Not started | Deliverable for Sprint 6 |
 | Tests | ⬜ Not started | No test suite; manual smoke tests only |
 
 ### Known issues
 
-1. **Missing icons.** `index.html` and `manifest.json` reference `assets/icons/icon-192.png` and `assets/icons/icon-512.png`, but the `assets/` directory does not exist. This produces 404s and prevents installation.
-2. **No Service Worker.** Even with icons, the app is not installable/offline until `sw.js` is registered.
-3. **The destination distances are fake.** Values such as "25 m" are static HTML, not computed from a graph.
-4. **The scanner is a visual mockup.** There is no `getUserMedia` call and no barcode decoding yet.
-5. **The 3D cube is not the navigation arrow.** It is the Week 1 proof that Three.js loads and renders.
-6. **No HTTPS demo yet.** GitHub Pages is not enabled, so camera and WebXR cannot be tested from a public URL.
-7. **No Android/ARCore test is documented.** The repository contains no test notes or device results; only desktop rendering has been checked.
+1. **The destination distances are fake.** Values such as "25 m" are static HTML, not computed from a graph.
+2. **The scanner is a visual mockup.** There is no `getUserMedia` call and no barcode decoding yet.
+3. **The 3D cube is not the navigation arrow.** It is the Week 1 proof that Three.js loads and renders.
+4. **No HTTPS demo yet.** GitHub Pages is not enabled, so camera and WebXR cannot be tested from a public URL.
+5. **No Android/ARCore test is documented.** The repository contains no test notes or device results; only desktop rendering and local offline mode have been checked.
+6. **PWA install has not been exercised on a real phone.** The criteria are met locally, but the Pages deployment and launcher install are still pending.
 
 ---
 
@@ -222,9 +232,9 @@ This is the honest state of the repository as of **2026-11-05**:
 | **3** | Building graph, shortest path computation | Route displayed as text | ⬜ |
 | **4** | `immersive-ar` session, hit testing, arrow placement | 3D arrow anchored to the floor | ⬜ |
 | **5** | Route update on each QR scan, destination choice | Complete journey on one floor | ⬜ |
-| **6** | Service Worker (offline), optimization, tests, docs, video | Final mobile version | ⬜ |
+| **6** | Service Worker (offline), optimization, tests, docs, video | Final mobile version | 🟡 Offline/icons done early |
 
-**Progress: 1 of 6 sprints complete (≈17%).** The visual foundation is in place; the functional core (camera, graph, AR) is still to be built.
+**Progress: 1 of 6 sprints complete (≈17%).** The visual foundation is in place; the functional core (camera, graph, AR) is still to be built. The Service Worker and icons were pulled forward into v1.2.0, so Sprint 6 now focuses on final optimization, tests, documentation and the video.
 
 ---
 
@@ -262,14 +272,14 @@ flowchart TB
     LS -. last position .-> MAIN
 ```
 
-**Reading the diagram:** solid arrows exist or are directly planned; dotted arrows are planned integrations. `scanner.js`, `navigation.js`, `sw.js`, `building.json` and the AR session are **not implemented yet**.
+**Reading the diagram:** solid arrows exist or are directly planned; dotted arrows are planned integrations. `scanner.js`, `navigation.js`, `building.json` and the AR session are **not implemented yet**. The Service Worker and icon set are implemented and verified offline.
 
 ### Why this architecture
 
 - **No install, no store:** a URL is enough; GitHub Pages provides HTTPS for free.
 - **No infrastructure:** QR codes are printed paper, not powered beacons.
 - **Works on low-end devices:** Three.js scene kept lightweight (2 lights, capped pixel ratio, procedural geometry).
-- **Offline-friendly by design:** after the first load, the Service Worker can serve the shell and the floor plan from cache.
+- **Offline-friendly by design:** after the first load, the Service Worker serves the shell, icons and pinned Three.js module from cache; the building plan joins the cache when it exists.
 
 ---
 
@@ -280,8 +290,9 @@ flowchart TB
 | Structure | HTML5 + CSS3 | PWA shell, responsive UI | ✅ |
 | Logic | ES6 modules (`import`/`export`) | Modular code split | ✅ |
 | 3D | Three.js **r160** via jsDelivr import map | Scene, camera, renderer, arrow geometry | ✅ Scene / 🟡 Arrow reserved |
-| PWA | `manifest.json` | Install metadata | 🟡 Icons missing |
-| PWA | Service Worker (`sw.js`) | Offline cache, installability | ⬜ |
+| PWA | `manifest.json` + icons | Install metadata | ✅ |
+| PWA | Service Worker (`sw.js`) | Offline cache, installability | ✅ |
+| PWA | Offline app shell | Cached first load | ✅ Verified locally |
 | Camera | `getUserMedia` | Rear camera stream | ⬜ |
 | QR | `BarcodeDetector` + **jsQR** fallback | Decode QR payloads | ⬜ |
 | AR | WebXR `immersive-ar`, hit testing, `XRAnchor` | Floor-anchored 3D arrow | ⬜ |
@@ -300,27 +311,28 @@ All libraries are loaded from **jsDelivr with pinned versions**, as required by 
 
 ```text
 indoor-wayfinder/
-├── index.html          # PWA shell, UI overlay, design system
-├── manifest.json       # PWA metadata (icons currently missing)
+├── index.html                 # PWA shell, UI overlay, design system
+├── manifest.json              # PWA metadata (any + maskable icons)
+├── sw.js                      # Offline app-shell service worker
+├── README.md
+├── CHANGELOG.md
 ├── src/
-│   └── main.js         # Three.js scene + UI controller + app state
-└── README.md
+│   └── main.js                # Three.js scene + UI controller + app state
+├── assets/
+│   └── icons/                 # 180/192/512 + maskable 192/512 PNGs
+└── docs/
+    └── screenshots/           # Current UI screenshots
 ```
 
-### Target layout (from the brief)
+### Still planned (from the brief)
 
 ```text
 indoor-wayfinder/
-├── index.html
-├── manifest.json
-├── sw.js                      # ⬜ Sprint 6 — offline cache
 ├── src/
-│   ├── main.js                # ✅ WebXR + Three.js entry point
 │   ├── scanner.js             # ⬜ Sprint 2 — camera + QR decoding
 │   └── navigation.js          # ⬜ Sprint 3 — graph + Dijkstra
 ├── assets/
-│   ├── icons/                 # ⬜ icon-192.png, icon-512.png
-│   ├── models/                # ⬜ optional 3D arrow model
+│   ├── models/                # ⬜ optional 3D arrow asset
 │   └── building.json          # ⬜ floor plan graph
 └── docs/
     ├── technical.md           # ⬜ install, QR generation, deployment
@@ -344,6 +356,8 @@ python -m http.server 8000
 Open <http://localhost:8000>.
 
 **What you should see:** the dark 3D scene with a rotating cube, the header badges, the scan overlay and the destination sheet. This is the Sprint 1 shell, not the final navigation app.
+
+**Offline check:** the Service Worker registers after load. Reload once so it controls the page, then switch DevTools to offline and reload; the shell and Three.js should still boot.
 
 **Limits of this local test:**
 
@@ -486,8 +500,8 @@ Print at a fixed height, one per corridor node, and record each node's position 
 
 **Goal:** shippable MVP and documentation.
 
-- Add `sw.js`: precache the app shell, JSON plan, icons and arrow asset; cache Three.js from jsDelivr.
-- Make the app installable (icons, manifest, Service Worker).
+- The offline shell is already shipped in v1.2.0; extend the cache to the building plan and arrow asset once they exist.
+- Verify installability on a real Android launcher (icons, manifest and Service Worker are in place).
 - Performance pass on a mid-range Android phone.
 - Write `docs/technical.md` (install, QR generation, deployment) and `docs/user-manual.md`.
 - Record the **5-minute demo video** with voice-over and title slide.
@@ -536,12 +550,12 @@ From the cahier des charges:
 |---|---|---|
 | 1 | Design notebook with UML sequence, component and deployment diagrams | ⬜ |
 | 2 | `index.html` — PWA structure | ✅ |
-| 3 | `src/main.js` — entry point, WebXR + Three.js, ES6 modules | 🟡 Scene + UI done; WebXR missing |
+| 3 | `src/main.js` — entry point, WebXR + Three.js, ES6 modules | 🟡 Scene + UI + AR prep; WebXR session missing |
 | 4 | `src/scanner.js` — QR reading | ⬜ |
 | 5 | `src/navigation.js` — building graph + shortest path | ⬜ |
-| 6 | `manifest.json` — PWA configuration | 🟡 Present; icons missing |
-| 7 | `sw.js` — Service Worker | ⬜ |
-| 8 | `/assets` — 3D arrow model + building plan JSON | ⬜ |
+| 6 | `manifest.json` — PWA configuration | ✅ |
+| 7 | `sw.js` — Service Worker | ✅ |
+| 8 | `/assets` — 3D arrow model + building plan JSON | 🟡 Icons done; arrow model and plan missing |
 | 9 | Technical documentation (install, QR generation, deployment) | ⬜ |
 | 10 | User manual (step-by-step guide) | ⬜ |
 | 11 | Demo video, 5 minutes max, voice-over, no background music | ⬜ |
@@ -571,11 +585,12 @@ The final jury demo, exactly as specified:
 | Environment | Purpose | Status |
 |---|---|---|
 | Desktop Chrome + local HTTP server | UI, scene, layout | ✅ Verified |
+| Desktop Chrome offline | Service Worker shell | ✅ Verified |
 | Desktop Chrome + Immersive Web Emulator | WebXR dry runs without a phone | ⬜ Not set up |
 | Android Chrome + ARCore | Mandatory real AR test | ⬜ Not tested |
 | Printed QR codes in the school corridor | End-to-end journey | ⬜ Not produced |
 
-**Manual checks that already pass:** page loads without JS errors, Three.js renders, scan overlay opens/closes, destination search filters, selecting a destination updates the toast, online/offline badge updates.
+**Manual checks that already pass:** page loads without JS errors, Three.js renders, scan overlay opens/closes, destination search filters, selection updates the toast and `aria-pressed`, dialogs trap focus and restore it, zoom is enabled, muted text passes AA contrast, forced WebGL/CDN failure shows a fallback banner, and an offline reload is served from the Service Worker.
 
 **Required device APIs:** `getUserMedia`, `BarcodeDetector` (or jsQR), Vibration, Screen Wake Lock, WebXR. Camera and XR require **HTTPS or localhost**.
 
@@ -599,7 +614,7 @@ Useful references:
 | Mobile performance | Stuttering | Light 3D model, limited lights, capped pixel ratio |
 | Schedule too tight | Incomplete features | Prioritize localization + pathfinding over polish |
 | No HTTPS demo | Camera/XR impossible to test | Enable GitHub Pages early |
-| Icons/Service Worker missing | App not installable/offline | Sprint 6 deliverable; add icons before install tests |
+| Stale cached shell after deploy | Old UI or assets | Versioned cache + network-first navigation |
 
 ---
 
@@ -631,7 +646,7 @@ No installation, no store review, instant updates, one codebase, and it satisfie
 No. It updates when a QR code is scanned. Between codes, the last known node is kept and the arrow guides to the next waypoint.
 
 **Does it work offline?**
-Not yet. The Service Worker is a Sprint 6 deliverable. The design target is: first load online, then the shell and floor plan work offline.
+Yes for the app shell. After the first controlled load, the Service Worker serves the shell, icons and pinned Three.js module offline. The building-plan JSON will be added to the cache when it exists.
 
 **Which phones are supported?**
 Android Chrome with ARCore is the reference. Desktop Chrome with the Immersive Web Emulator is the fallback. iOS is not a target for this MVP.
