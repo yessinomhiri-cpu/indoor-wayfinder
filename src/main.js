@@ -44,6 +44,12 @@ const sceneContainer = document.getElementById('scene-container');
 /** @type {HTMLDivElement} UI overlay wrapping header, toast, and action bar */
 const uiOverlayElement = document.getElementById('ui-overlay');
 
+/** @type {HTMLDivElement} Persistent banner shown when the 3D renderer fails */
+const renderFallbackElement = document.getElementById('render-fallback');
+
+/** @type {HTMLSpanElement} Message inside the 3D failure banner */
+const renderFallbackMessageElement = document.getElementById('render-fallback-message');
+
 /** @type {HTMLDivElement} Floating status toast pill */
 const statusToastElement = document.getElementById('status-toast');
 
@@ -470,6 +476,22 @@ function showStatusToast(message, durationMs = 4200) {
 // Accessibility: Modal Focus Management
 // ---------------------------------------------------------------------------
 
+/**
+ * showRenderFallback
+ * ------------------
+ * Reveals the persistent 3D failure banner with a readable explanation.
+ *
+ * @param {string} message – User-facing fallback message.
+ */
+function showRenderFallback(message) {
+  if (renderFallbackMessageElement && message) {
+    renderFallbackMessageElement.textContent = message;
+  }
+  if (renderFallbackElement) {
+    renderFallbackElement.hidden = false;
+  }
+}
+
 /** Selector for elements that can receive keyboard focus. */
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -842,39 +864,50 @@ function initUIEventListeners() {
  * UI handlers.
  */
 function init() {
-  // 1. Build core Three.js components
-  const scene = createScene();
-  const camera = createCamera();
-  const renderer = createRenderer(sceneContainer);
-
-  // 2. Populate 3D scene elements
-  const cubeGroup = createCube();
-  scene.add(cubeGroup);
-
-  const groundShadowMesh = createGroundShadow();
-  scene.add(groundShadowMesh);
-
-  createLighting(scene);
-  createGridHelper(scene);
-
-  // 3. React to viewport resizing & orientation changes
-  window.addEventListener('resize', () => {
-    handleWindowResize(camera, renderer);
-  });
-  window.addEventListener('orientationchange', () => {
-    setTimeout(() => handleWindowResize(camera, renderer), 100);
-  });
-
-  // 4. Start 3D animation loop
-  startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh);
-
-  // 5. Initialize UI overlays & interactions
+  // 1. Bind UI first so the shell remains usable if WebGL is unavailable
   initUIEventListeners();
 
-  // 6. Display initial discrete status toast
-  showStatusToast('Scène 3D initialisée ✓', 4000);
+  try {
+    // 2. Build core Three.js components
+    const scene = createScene();
+    const camera = createCamera();
+    const renderer = createRenderer(sceneContainer);
 
-  console.log('[Indoor Wayfinder] v1.1.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    // 3. Populate 3D scene elements
+    const cubeGroup = createCube();
+    scene.add(cubeGroup);
+
+    const groundShadowMesh = createGroundShadow();
+    scene.add(groundShadowMesh);
+
+    createLighting(scene);
+    createGridHelper(scene);
+
+    // 4. React to viewport resizing & orientation changes
+    window.addEventListener('resize', () => {
+      handleWindowResize(camera, renderer);
+    });
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => handleWindowResize(camera, renderer), 100);
+    });
+
+    renderer.domElement.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault();
+      showRenderFallback('Le contexte 3D a été perdu. Rechargez la page pour réessayer.');
+    });
+
+    // 5. Start 3D animation loop
+    startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh);
+
+    // 6. Display initial discrete status toast
+    showStatusToast('Scène 3D initialisée ✓', 4000);
+
+    console.log('[Indoor Wayfinder] v1.1.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+  } catch (error) {
+    console.error('[Indoor Wayfinder] 3D initialization failed:', error);
+    showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
+    showStatusToast('Mode dégradé : rendu 3D indisponible', 5000);
+  }
 }
 
 // Boot application

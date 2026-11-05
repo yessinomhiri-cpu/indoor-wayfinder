@@ -293,6 +293,41 @@
     }
 
     /* ==========================================================================
+       4b. Render Failure Fallback
+       ========================================================================== */
+    .render-fallback {
+      position: absolute;
+      top: calc(104px + env(safe-area-inset-top, 0px));
+      left: var(--space-md);
+      right: var(--space-md);
+      z-index: 30;
+      padding: var(--space-sm) var(--space-md);
+      background: var(--color-alert-bg);
+      border: 1px solid rgba(239, 68, 68, 0.45);
+      border-radius: var(--radius-md);
+      color: var(--color-text-primary);
+      font-size: var(--font-size-xs);
+      line-height: 1.45;
+      pointer-events: auto;
+    }
+
+    .render-fallback strong {
+      color: var(--color-alert);
+    }
+
+    .render-fallback[hidden] {
+      display: none;
+    }
+
+    .noscript-fallback {
+      position: fixed;
+      top: calc(var(--space-md) + env(safe-area-inset-top, 0px));
+      left: var(--space-md);
+      right: var(--space-md);
+      z-index: 1000;
+    }
+
+    /* ==========================================================================
        5. Floating Glass Action Bar (Bottom)
        ========================================================================== */
     .bottom-bar-container {
@@ -831,6 +866,12 @@
 </head>
 <body>
 
+  <noscript>
+    <div class="render-fallback noscript-fallback" role="alert">
+      <strong>JavaScript est requis.</strong> Activez JavaScript pour utiliser Indoor Wayfinder.
+    </div>
+  </noscript>
+
   <!-- ==================== Three.js Canvas Container ==================== -->
   <div id="scene-container" aria-hidden="true"></div>
 
@@ -854,11 +895,17 @@
       </div>
     </header>
 
+    <!-- 3D Render / Module Failure Fallback -->
+    <div id="render-fallback" class="render-fallback" role="alert" hidden>
+      <strong>Rendu 3D indisponible.</strong>
+      <span id="render-fallback-message">La scène 3D et le guidage AR ne sont pas disponibles. Rechargez la page pour réessayer.</span>
+    </div>
+
     <!-- Discreet Status Toast (Auto-dismissing) -->
     <div class="status-toast-wrapper">
       <div id="status-toast" class="status-toast" role="status" aria-live="polite" aria-atomic="true">
         <span class="toast-indicator" aria-hidden="true">✓</span>
-        <span id="status-message">Scène 3D chargée</span>
+        <span id="status-message">Démarrage…</span>
       </div>
     </div>
 
@@ -1046,6 +1093,27 @@
   </section>
 
   <!-- ==================== Main JavaScript Entrypoint ==================== -->
+  <script>
+    // Reveal the fallback if the module graph or the CDN fails to load.
+    (function () {
+      function showFallback() {
+        var fallback = document.getElementById('render-fallback');
+        var message = document.getElementById('render-fallback-message');
+        if (message) {
+          message.textContent = "Le moteur 3D n'a pas pu être chargé. Vérifiez votre connexion puis rechargez la page.";
+        }
+        if (fallback) fallback.hidden = false;
+      }
+      window.addEventListener('error', function (event) {
+        if (event.target && event.target.tagName === 'SCRIPT') {
+          showFallback();
+        } else if (event.error) {
+          showFallback();
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', showFallback);
+    })();
+  </script>
   <script type="module" src="src/main.js"></script>
 
 </body>
