@@ -220,53 +220,51 @@ function createCube() {
 /**
  * createArrow
  * -----------
- * Generates a procedural 3D waypoint arrow (cylinder shaft + cone tip)
- * combined into a single group. Uses MeshStandardMaterial with cyan accent
- * color, subtle metallic sheen, and emissive glow.
+ * Builds a flat, forward-pointing floor arrow from an extruded 2D shape.
+ * The group origin is the arrow tail at floor level; the tip points along
+ * +Z. An AR caller can place the group at a floor hit pose and yaw it
+ * toward the next node with `rotation.y = Math.atan2(dx, dz)`.
  *
  * NOTE: This function is NOT called in the current build. It is reserved
- * for Step 4 (WebXR) where the arrow will replace the cube as the live
- * navigation indicator anchored to the AR scene.
+ * for Sprint 4 (WebXR) where the arrow replaces the cube as the live
+ * navigation indicator.
  *
- * @returns {THREE.Group} The arrow anchor group.
+ * @returns {THREE.Group} Arrow group with its origin at floor level.
  */
 function createArrow() {
   const arrowAnchor = new THREE.Group();
   arrowAnchor.name = 'arrowAnchor';
 
-  // Metallic cyan accent material matching design system
-  const arrowMaterial = new THREE.MeshStandardMaterial({
+  // Flat arrow outline in the XY plane, pointing along +Y (1 metre long)
+  const arrowShape = new THREE.Shape();
+  arrowShape.moveTo(-0.08, 0);
+  arrowShape.lineTo(-0.08, 0.55);
+  arrowShape.lineTo(-0.22, 0.55);
+  arrowShape.lineTo(0, 1.0);
+  arrowShape.lineTo(0.22, 0.55);
+  arrowShape.lineTo(0.08, 0.55);
+  arrowShape.lineTo(0.08, 0);
+  arrowShape.closePath();
+
+  // Extrude 4 cm, then lay the shape on the XZ floor plane (+Y becomes +Z)
+  const arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, {
+    depth: 0.04,
+    bevelEnabled: false,
+    steps: 1,
+    curveSegments: 1
+  });
+  arrowGeometry.rotateX(Math.PI / 2);
+  arrowGeometry.translate(0, 0.04, 0);
+
+  // Unlit material: readable in AR without scene lights
+  const arrowMaterial = new THREE.MeshBasicMaterial({
     color: 0x00d2ff,
-    roughness: 0.28,
-    metalness: 0.65,
-    emissive: 0x003d59,
-    emissiveIntensity: 0.35,
+    side: THREE.DoubleSide,
+    toneMapped: false
   });
 
-  // Arrow shaft: cylinder geometry
-  const shaftRadius = 0.13;
-  const shaftHeight = 0.9;
-  const shaftGeometry = new THREE.CylinderGeometry(
-    shaftRadius,
-    shaftRadius,
-    shaftHeight,
-    32
-  );
-  const shaftMesh = new THREE.Mesh(shaftGeometry, arrowMaterial);
-  shaftMesh.position.set(0, -0.25, 0);
-  arrowAnchor.add(shaftMesh);
-
-  // Arrow head: cone geometry
-  const headRadius = 0.38;
-  const headHeight = 0.7;
-  const headGeometry = new THREE.ConeGeometry(headRadius, headHeight, 32);
-  const headMesh = new THREE.Mesh(headGeometry, arrowMaterial);
-  headMesh.position.set(0, 0.55, 0);
-  arrowAnchor.add(headMesh);
-
-  // Position arrow at comfortable eye level and tilt slightly forward
-  arrowAnchor.position.set(0, 1.15, 0);
-  arrowAnchor.rotation.x = 0.25;
+  const arrowMesh = new THREE.Mesh(arrowGeometry, arrowMaterial);
+  arrowAnchor.add(arrowMesh);
 
   return arrowAnchor;
 }
