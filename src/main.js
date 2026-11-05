@@ -612,6 +612,8 @@ function openDestinationSheet() {
 function closeDestinationSheet() {
   if (!destinationSheetElement || !sheetBackdropElement) return;
 
+  destinationSheetElement.style.transform = '';
+
   sheetBackdropElement.classList.remove('is-open');
   sheetBackdropElement.setAttribute('aria-hidden', 'true');
 
@@ -687,29 +689,36 @@ function setupTouchDismissSheet(sheetElement, handleBarElement) {
   let touchStartY = 0;
   let currentTouchY = 0;
 
+  /** Resets the drag transform and cached touch positions. */
+  function resetDragState() {
+    sheetElement.style.transform = '';
+    touchStartY = 0;
+    currentTouchY = 0;
+  }
+
   handleBarElement.addEventListener('touchstart', (event) => {
     touchStartY = event.touches[0].clientY;
+    currentTouchY = touchStartY;
   }, { passive: true });
 
   handleBarElement.addEventListener('touchmove', (event) => {
     currentTouchY = event.touches[0].clientY;
     const deltaY = currentTouchY - touchStartY;
-    if (deltaY > 0) {
-      // Provide direct downward follow feedback
-      sheetElement.style.transform = `translateY(${Math.min(deltaY, 200)}px)`;
-    }
+    sheetElement.style.transform = deltaY > 0
+      ? `translateY(${Math.min(deltaY, 200)}px)`
+      : '';
   }, { passive: true });
 
   handleBarElement.addEventListener('touchend', () => {
-    const deltaY = currentTouchY - touchStartY;
-    sheetElement.style.transform = '';
+    const shouldDismiss = currentTouchY - touchStartY > 60;
+    resetDragState();
     // If pulled down further than 60px, dismiss
-    if (deltaY > 60) {
+    if (shouldDismiss) {
       closeDestinationSheet();
     }
-    touchStartY = 0;
-    currentTouchY = 0;
   });
+
+  handleBarElement.addEventListener('touchcancel', resetDragState);
 }
 
 // ---------------------------------------------------------------------------
