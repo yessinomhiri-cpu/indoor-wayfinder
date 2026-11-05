@@ -851,7 +851,7 @@
     <div class="bottom-bar-container">
       <nav id="bottom-bar" aria-label="Actions de navigation">
         <!-- SCANNER Button (Primary) -->
-        <button id="btn-scan" class="action-btn btn-action-primary" type="button" aria-label="Ouvrir le scanner de repère QR">
+        <button id="btn-scan" class="action-btn btn-action-primary" type="button" aria-label="Ouvrir le scanner de repère QR" aria-haspopup="dialog" aria-controls="scan-overlay" aria-expanded="false">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7"></rect>
             <rect x="14" y="3" width="7" height="7"></rect>
@@ -862,7 +862,7 @@
         </button>
 
         <!-- DESTINATION Button (Secondary) -->
-        <button id="btn-destination" class="action-btn btn-action-secondary" type="button" aria-label="Ouvrir la liste des salles et destinations">
+        <button id="btn-destination" class="action-btn btn-action-secondary" type="button" aria-label="Ouvrir la liste des salles et destinations" aria-haspopup="dialog" aria-controls="destination-sheet" aria-expanded="false">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path>
             <circle cx="12" cy="10" r="3"></circle>
@@ -875,7 +875,7 @@
   </div>
 
   <!-- ==================== Mockup Screen 1: Scan Overlay ==================== -->
-  <div id="scan-overlay" class="scan-overlay" role="dialog" aria-modal="true" aria-labelledby="scan-title" aria-hidden="true">
+  <div id="scan-overlay" class="scan-overlay" role="dialog" aria-modal="true" aria-labelledby="scan-title" aria-hidden="true" inert>
     <div class="scan-top-bar">
       <div id="scan-title" class="scan-title-text">Scanner un repère AR</div>
       <button id="btn-close-scan" class="icon-btn" type="button" aria-label="Fermer le scanner">
@@ -908,7 +908,7 @@
   <!-- ==================== Mockup Screen 2: Destination Bottom Sheet ==================== -->
   <div id="sheet-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
 
-  <section id="destination-sheet" class="destination-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true">
+  <section id="destination-sheet" class="destination-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true" inert>
     <!-- Drag pill handle -->
     <div id="sheet-drag-handle-bar" class="sheet-drag-handle-bar">
       <div class="sheet-drag-pill"></div>

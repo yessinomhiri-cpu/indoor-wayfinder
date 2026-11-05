@@ -41,6 +41,9 @@ let toastDismissTimerId = null;
 /** @type {HTMLDivElement} Host element for the Three.js canvas */
 const sceneContainer = document.getElementById('scene-container');
 
+/** @type {HTMLDivElement} UI overlay wrapping header, toast, and action bar */
+const uiOverlayElement = document.getElementById('ui-overlay');
+
 /** @type {HTMLDivElement} Floating status toast pill */
 const statusToastElement = document.getElementById('status-toast');
 
@@ -464,6 +467,72 @@ function showStatusToast(message, durationMs = 4200) {
 }
 
 // ---------------------------------------------------------------------------
+// Accessibility: Modal Focus Management
+// ---------------------------------------------------------------------------
+
+/** Selector for elements that can receive keyboard focus. */
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])'
+].join(', ');
+
+/**
+ * getTabbableElements
+ * -------------------
+ * Returns the visible, non-inert focusable elements inside a container.
+ *
+ * @param {HTMLElement} container – Dialog or panel to inspect.
+ * @returns {HTMLElement[]} Tabbable elements in DOM order.
+ */
+function getTabbableElements(container) {
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (element.closest('[inert]')) return false;
+    if (window.getComputedStyle(element).visibility === 'hidden') return false;
+    return element.getClientRects().length > 0;
+  });
+}
+
+/**
+ * trapFocus
+ * ---------
+ * Keeps Tab and Shift+Tab navigation inside an open dialog.
+ *
+ * @param {KeyboardEvent} event – Keydown event.
+ * @param {HTMLElement} container – Open dialog.
+ */
+function trapFocus(event, container) {
+  if (event.key !== 'Tab') return;
+
+  const tabbableElements = getTabbableElements(container);
+  if (tabbableElements.length === 0) {
+    event.preventDefault();
+    return;
+  }
+
+  const firstElement = tabbableElements[0];
+  const lastElement = tabbableElements[tabbableElements.length - 1];
+  const activeElement = document.activeElement;
+
+  if (!container.contains(activeElement)) {
+    event.preventDefault();
+    (event.shiftKey ? lastElement : firstElement).focus();
+    return;
+  }
+
+  if (event.shiftKey && activeElement === firstElement) {
+    event.preventDefault();
+    lastElement.focus();
+  } else if (!event.shiftKey && activeElement === lastElement) {
+    event.preventDefault();
+    firstElement.focus();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // UI Interactions: Scan Reticle Overlay Mockup
 // ---------------------------------------------------------------------------
 
@@ -474,8 +543,13 @@ function showStatusToast(message, durationMs = 4200) {
  */
 function openScanOverlay() {
   if (!scanOverlayElement) return;
+
+  if (uiOverlayElement) uiOverlayElement.inert = true;
+  if (destinationSheetElement) destinationSheetElement.inert = true;
+  scanOverlayElement.inert = false;
   scanOverlayElement.classList.add('is-open');
   scanOverlayElement.setAttribute('aria-hidden', 'false');
+  if (scanTriggerButton) scanTriggerButton.setAttribute('aria-expanded', 'true');
   if (closeScanButton) {
     closeScanButton.focus();
   }
@@ -488,9 +562,13 @@ function openScanOverlay() {
  */
 function closeScanOverlay() {
   if (!scanOverlayElement) return;
+
   scanOverlayElement.classList.remove('is-open');
   scanOverlayElement.setAttribute('aria-hidden', 'true');
+  scanOverlayElement.inert = true;
+  if (uiOverlayElement) uiOverlayElement.inert = false;
   if (scanTriggerButton) {
+    scanTriggerButton.setAttribute('aria-expanded', 'false');
     scanTriggerButton.focus();
   }
 }
@@ -507,11 +585,16 @@ function closeScanOverlay() {
 function openDestinationSheet() {
   if (!destinationSheetElement || !sheetBackdropElement) return;
 
+  if (uiOverlayElement) uiOverlayElement.inert = true;
+  if (scanOverlayElement) scanOverlayElement.inert = true;
+  destinationSheetElement.inert = false;
+
   sheetBackdropElement.classList.add('is-open');
   sheetBackdropElement.setAttribute('aria-hidden', 'false');
 
   destinationSheetElement.classList.add('is-open');
   destinationSheetElement.setAttribute('aria-hidden', 'false');
+  if (destinationTriggerButton) destinationTriggerButton.setAttribute('aria-expanded', 'true');
 
   if (destinationSearchInput) {
     destinationSearchInput.value = '';
@@ -534,8 +617,11 @@ function closeDestinationSheet() {
 
   destinationSheetElement.classList.remove('is-open');
   destinationSheetElement.setAttribute('aria-hidden', 'true');
+  destinationSheetElement.inert = true;
+  if (uiOverlayElement) uiOverlayElement.inert = false;
 
   if (destinationTriggerButton) {
+    destinationTriggerButton.setAttribute('aria-expanded', 'false');
     destinationTriggerButton.focus();
   }
 }
@@ -715,13 +801,19 @@ function initUIEventListeners() {
     });
   }
 
-  // 7. Global keyboard accessibility (Escape closes active modal)
+  // 7. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
         closeScanOverlay();
       } else if (destinationSheetElement && destinationSheetElement.classList.contains('is-open')) {
         closeDestinationSheet();
+      }
+    } else if (event.key === 'Tab') {
+      if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
+        trapFocus(event, scanOverlayElement);
+      } else if (destinationSheetElement && destinationSheetElement.classList.contains('is-open')) {
+        trapFocus(event, destinationSheetElement);
       }
     }
   });
