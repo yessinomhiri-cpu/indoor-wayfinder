@@ -20,25 +20,26 @@
 1. [The project in one minute](#the-project-in-one-minute)
 2. [The problem](#the-problem)
 3. [How it works](#how-it-works)
-4. [What is already built](#what-is-already-built)
-5. [What is not built yet](#what-is-not-built-yet)
-6. [Project status](#project-status)
-7. [Architecture](#architecture)
-8. [Technology stack](#technology-stack)
-9. [Repository layout](#repository-layout)
-10. [Run it locally](#run-it-locally)
-11. [Deployment](#deployment)
-12. [Building data model](#building-data-model)
-13. [Roadmap — the remaining five sprints](#roadmap--the-remaining-five-sprints)
-14. [Design patterns](#design-patterns)
-15. [Coding conventions](#coding-conventions)
-16. [Deliverables checklist](#deliverables-checklist)
-17. [Demo scenario](#demo-scenario)
-18. [Testing environment](#testing-environment)
-19. [Risks and mitigations](#risks-and-mitigations)
-20. [Out of scope](#out-of-scope)
-21. [FAQ](#faq)
-22. [Team](#team)
+4. [Screenshots](#screenshots)
+5. [What is already built](#what-is-already-built)
+6. [What is not built yet](#what-is-not-built-yet)
+7. [Project status](#project-status)
+8. [Architecture](#architecture)
+9. [Technology stack](#technology-stack)
+10. [Repository layout](#repository-layout)
+11. [Run it locally](#run-it-locally)
+12. [Deployment](#deployment)
+13. [Building data model](#building-data-model)
+14. [Roadmap — the remaining five sprints](#roadmap--the-remaining-five-sprints)
+15. [Design patterns](#design-patterns)
+16. [Coding conventions](#coding-conventions)
+17. [Deliverables checklist](#deliverables-checklist)
+18. [Demo scenario](#demo-scenario)
+19. [Testing environment](#testing-environment)
+20. [Risks and mitigations](#risks-and-mitigations)
+21. [Out of scope](#out-of-scope)
+22. [FAQ](#faq)
+23. [Team](#team)
 
 ---
 
@@ -121,6 +122,19 @@ sequenceDiagram
 ```
 
 **Important:** the position is **not continuous**. It is updated only when a QR code is scanned. Between two codes, the app keeps the last known node and the arrow guides toward the next waypoint. This is a deliberate design choice from the brief, not a bug.
+
+---
+
+## Screenshots
+
+Captured on **2026-11-05** from the current `main` build at a 390 × 844 mobile viewport.
+
+| Home — 3D scene | Scanner overlay |
+|:---:|:---:|
+| <img src="docs/screenshots/01-home.png" width="280" alt="Home screen with rotating 3D cube"><br>**Home** — Three.js placeholder scene | <img src="docs/screenshots/02-scan.png" width="280" alt="Scan overlay mockup"><br>**Scanner** — mockup, no camera yet |
+| <img src="docs/screenshots/03-destinations.png" width="280" alt="Destination bottom sheet"><br>**Destinations** — 6 hard-coded rooms | <img src="docs/screenshots/04-search.png" width="280" alt="Destination search filtered to Amphi A"><br>**Search** — live filtering on mockup data |
+
+The scan and destination flows are **UI mockups**: no camera, no QR decoding, no graph and no routing yet. They show what Sprints 2–5 will make real.
 
 ---
 
