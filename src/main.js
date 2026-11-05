@@ -160,13 +160,15 @@ function createCamera() {
 function createRenderer(container) {
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
-    alpha: false,
+    alpha: true,
     powerPreference: 'high-performance'
   });
 
   // Strict pixel ratio ceiling at 2 for mobile efficiency
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // Keep the canvas transparent where nothing is drawn (required in AR mode)
+  renderer.setClearColor(0x000000, 0);
 
   container.appendChild(renderer.domElement);
 
