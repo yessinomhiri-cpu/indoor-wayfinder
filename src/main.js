@@ -661,6 +661,14 @@ function filterDestinations(query) {
  */
 function selectDestination(destinationId, destinationName) {
   currentDestinationId = destinationId;
+
+  if (destinationListScroll) {
+    destinationListScroll.querySelectorAll('.destination-item').forEach((item) => {
+      const isSelected = item.getAttribute('data-destination-id') === destinationId;
+      item.setAttribute('aria-pressed', String(isSelected));
+    });
+  }
+
   showStatusToast(`Destination : ${destinationName}`, 4000);
   closeDestinationSheet();
 }

@@ -726,6 +726,22 @@
       outline-offset: 2px;
     }
 
+    .destination-item[aria-pressed="true"] {
+      border-color: var(--color-border-highlight);
+      background: rgba(0, 210, 255, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(0, 210, 255, 0.2);
+    }
+
+    .destination-item[aria-pressed="true"] .dest-icon-badge {
+      background: var(--color-accent-primary);
+      color: var(--color-text-inverse);
+    }
+
+    .destination-item[aria-pressed="true"] .dest-icon-badge.alert-type {
+      background: var(--color-alert);
+      color: var(--color-text-primary);
+    }
+
     .dest-icon-badge {
       display: flex;
       align-items: center;
@@ -945,9 +961,9 @@
     </div>
 
     <!-- Scrollable Room List -->
-    <div id="destination-list-scroll" class="destination-list-scroll" role="list">
+    <div id="destination-list-scroll" class="destination-list-scroll" role="group" aria-label="Destinations disponibles">
       <!-- Item: Salle B12 -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="room-b12" data-destination-name="Salle B12">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="room-b12" data-destination-name="Salle B12">
         <div class="dest-icon-badge" aria-hidden="true">💻</div>
         <div class="dest-details">
           <div class="dest-name">Salle B12</div>
@@ -960,7 +976,7 @@
       </article>
 
       <!-- Item: Sortie de secours Nord -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="exit-north" data-destination-name="Sortie de secours Nord">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="exit-north" data-destination-name="Sortie de secours Nord">
         <div class="dest-icon-badge alert-type" aria-hidden="true">🚪</div>
         <div class="dest-details">
           <div class="dest-name">Sortie de secours Nord</div>
@@ -973,7 +989,7 @@
       </article>
 
       <!-- Item: Amphi A -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="amphi-a" data-destination-name="Amphi A">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="amphi-a" data-destination-name="Amphi A">
         <div class="dest-icon-badge" aria-hidden="true">🎓</div>
         <div class="dest-details">
           <div class="dest-name">Amphi A</div>
@@ -986,7 +1002,7 @@
       </article>
 
       <!-- Item: Cafétéria Centrale -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="cafeteria" data-destination-name="Cafétéria Centrale">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="cafeteria" data-destination-name="Cafétéria Centrale">
         <div class="dest-icon-badge" aria-hidden="true">☕</div>
         <div class="dest-details">
           <div class="dest-name">Cafétéria Centrale</div>
@@ -999,7 +1015,7 @@
       </article>
 
       <!-- Item: Accueil & Secrétariat -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="reception" data-destination-name="Accueil & Secrétariat">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="reception" data-destination-name="Accueil & Secrétariat">
         <div class="dest-icon-badge" aria-hidden="true">🏢</div>
         <div class="dest-details">
           <div class="dest-name">Accueil & Secrétariat</div>
@@ -1012,7 +1028,7 @@
       </article>
 
       <!-- Item: Sanitaires RDC -->
-      <article class="destination-item" role="listitem" tabindex="0" data-destination-id="restrooms" data-destination-name="Sanitaires RDC">
+      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="restrooms" data-destination-name="Sanitaires RDC">
         <div class="dest-icon-badge" aria-hidden="true">🚻</div>
         <div class="dest-details">
           <div class="dest-name">Sanitaires RDC</div>
