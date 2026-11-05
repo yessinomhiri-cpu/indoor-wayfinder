@@ -152,14 +152,14 @@ Sprint 1 delivered a working **PWA shell and a Three.js 3D scene** (v1.1.0, 4 No
 - Application state placeholders: `currentQrNodeId`, `currentDestinationId`.
 - Destination selection currently only stores the ID and shows a toast.
 
-### 3. What was verified
+### 3. What was verified (2026-11-05)
 
 - Page loads with no JavaScript errors.
 - The Three.js canvas renders (`Three.js r160` confirmed in the console).
 - The scan overlay opens and closes.
 - Destination search filters the list; selecting a room updates the toast.
 - The online/offline badge reflects `navigator.onLine`.
-- Missing icon requests are the only 404s (`assets/icons/icon-192.png`).
+- Missing icon requests are the only failing requests (`assets/icons/icon-192.png`).
 
 ---
 
@@ -195,7 +195,7 @@ This is the honest state of the repository as of **2026-11-05**:
 4. **The scanner is a visual mockup.** There is no `getUserMedia` call and no barcode decoding yet.
 5. **The 3D cube is not the navigation arrow.** It is the Week 1 proof that Three.js loads and renders.
 6. **No HTTPS demo yet.** GitHub Pages is not enabled, so camera and WebXR cannot be tested from a public URL.
-7. **Not yet tested on a real Android device or ARCore.** Only desktop rendering has been verified.
+7. **No Android/ARCore test is documented.** The repository contains no test notes or device results; only desktop rendering has been checked.
 
 ---
 
