@@ -378,6 +378,7 @@ function createGridHelper(scene) {
 function handleWindowResize(camera, renderer) {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
@@ -390,7 +391,8 @@ function handleWindowResize(camera, renderer) {
  * ------------------
  * Coordinates the requestAnimationFrame loop. The cube rotates slowly on Y
  * and slightly on X while floating up and down. The ground shadow breathes
- * in sync. Respects prefers-reduced-motion.
+ * in sync. Rendering is skipped while a modal overlay covers the scene.
+ * Respects prefers-reduced-motion.
  *
  * @param {THREE.WebGLRenderer} renderer – Active renderer.
  * @param {THREE.Scene} scene – Active scene.
@@ -410,12 +412,31 @@ function startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh
   const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   /**
+   * isSceneCoveredByUi
+   * ------------------
+   * Returns true while a full-screen modal hides the 3D scene.
+   *
+   * @returns {boolean} Whether rendering can be skipped for this frame.
+   */
+  function isSceneCoveredByUi() {
+    return Boolean(
+      (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) ||
+      (destinationSheetElement && destinationSheetElement.classList.contains('is-open'))
+    );
+  }
+
+  /**
    * animate (inner)
    * ---------------
    * Single frame callback for requestAnimationFrame.
    */
   function animate() {
     requestAnimationFrame(animate);
+
+    // Keep the last frame on screen while an overlay is open.
+    if (isSceneCoveredByUi()) {
+      return;
+    }
 
     const elapsedTime = clock.getElapsedTime();
 
@@ -889,6 +910,9 @@ function init() {
     });
     window.addEventListener('orientationchange', () => {
       setTimeout(() => handleWindowResize(camera, renderer), 100);
+    });
+    window.visualViewport?.addEventListener('resize', () => {
+      handleWindowResize(camera, renderer);
     });
 
     renderer.domElement.addEventListener('webglcontextlost', (event) => {
