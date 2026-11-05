@@ -387,10 +387,12 @@ function handleWindowResize(camera, renderer) {
 /**
  * startAnimationLoop
  * ------------------
- * Coordinates the requestAnimationFrame loop. The cube rotates slowly on Y
- * and slightly on X while floating up and down. The ground shadow breathes
- * in sync. Rendering is skipped while a modal overlay covers the scene.
- * Respects prefers-reduced-motion.
+ * Registers the frame callback with Three.js. `setAnimationLoop` uses
+ * requestAnimationFrame in normal mode and the XR frame loop inside a
+ * WebXR session, which is required for immersive-ar rendering. The cube
+ * rotates slowly on Y and slightly on X while floating up and down. The
+ * ground shadow breathes in sync. Rendering is skipped while a modal
+ * overlay covers the scene. Respects prefers-reduced-motion.
  *
  * @param {THREE.WebGLRenderer} renderer – Active renderer.
  * @param {THREE.Scene} scene – Active scene.
@@ -426,11 +428,9 @@ function startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh
   /**
    * animate (inner)
    * ---------------
-   * Single frame callback for requestAnimationFrame.
+   * Single frame callback for the Three.js animation loop.
    */
   function animate() {
-    requestAnimationFrame(animate);
-
     // Keep the last frame on screen while an overlay is open.
     if (isSceneCoveredByUi()) {
       return;
@@ -458,8 +458,8 @@ function startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh
     renderer.render(scene, camera);
   }
 
-  // Kick off the loop
-  animate();
+  // Kick off the loop (rAF normally, XR frames when a WebXR session is active)
+  renderer.setAnimationLoop(animate);
 }
 
 // ---------------------------------------------------------------------------
@@ -915,6 +915,7 @@ function init() {
 
     renderer.domElement.addEventListener('webglcontextlost', (event) => {
       event.preventDefault();
+      renderer.setAnimationLoop(null);
       showRenderFallback('Le contexte 3D a été perdu. Rechargez la page pour réessayer.');
     });
 
