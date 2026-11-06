@@ -14,7 +14,7 @@
  * ==========================================================================
  */
 
-const CACHE_NAME = 'indoor-wayfinder-v1.2.0';
+const CACHE_NAME = 'indoor-wayfinder-v2.0.0';
 const SCOPE_URL = self.registration.scope;
 
 /** Application files required to boot the shell offline. */
@@ -23,6 +23,9 @@ const APP_SHELL = [
   new URL('index.html', SCOPE_URL).href,
   new URL('manifest.json', SCOPE_URL).href,
   new URL('src/main.js', SCOPE_URL).href,
+  new URL('src/scanner.js', SCOPE_URL).href,
+  new URL('src/navigation.js', SCOPE_URL).href,
+  new URL('assets/building.json', SCOPE_URL).href,
   new URL('assets/icons/icon-180.png', SCOPE_URL).href,
   new URL('assets/icons/icon-192.png', SCOPE_URL).href,
   new URL('assets/icons/icon-512.png', SCOPE_URL).href,
@@ -32,7 +35,8 @@ const APP_SHELL = [
 
 /** Pinned CDN module; a failure here must not block the app-shell install. */
 const CDN_ASSETS = [
-  'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js'
+  'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm'
 ];
 
 /**

@@ -22,10 +22,18 @@
 // Imports – Three.js is resolved via the import map in index.html (jsDelivr pinned)
 // ---------------------------------------------------------------------------
 import * as THREE from 'three';
+import { QrScanner } from './scanner.js';
+import { BuildingGraph } from './navigation.js';
 
 // ---------------------------------------------------------------------------
-// Application State (prepared for scanner.js & navigation.js integration)
+// Application State & Services
 // ---------------------------------------------------------------------------
+
+/** @type {BuildingGraph} Building graph model */
+const buildingGraph = new BuildingGraph();
+
+/** @type {QrScanner} Scanner engine */
+const qrScanner = new QrScanner();
 
 /** @type {string|null} ID of the active QR node calibrated in the building */
 let currentQrNodeId = null;
@@ -72,6 +80,12 @@ const destinationTriggerButton = document.getElementById('btn-destination');
 
 /** @type {HTMLDivElement} Fullscreen scan reticle overlay */
 const scanOverlayElement = document.getElementById('scan-overlay');
+
+/** @type {HTMLVideoElement} Video preview element for camera stream */
+const scanVideoElement = document.getElementById('scan-video');
+
+/** @type {HTMLCanvasElement} Off-screen canvas for frame pixel analysis */
+const scanCanvasElement = document.getElementById('scan-canvas');
 
 /** @type {HTMLButtonElement} Close button for scan overlay */
 const closeScanButton = document.getElementById('btn-close-scan');
@@ -578,15 +592,41 @@ function trapFocus(event, container) {
 }
 
 // ---------------------------------------------------------------------------
-// UI Interactions: Scan Reticle Overlay Mockup
+// UI Interactions: Scan Reticle Overlay (Camera + QR Detection)
 // ---------------------------------------------------------------------------
+
+/**
+ * handleQrDetection
+ * -----------------
+ * Callback invoked when a QR code is successfully decoded from camera.
+ * Updates current position and closes scanner overlay.
+ *
+ * @param {string} rawQrCode - Scanned QR code value.
+ */
+function handleQrDetection(rawQrCode) {
+  const scannedKey = (rawQrCode || '').trim().toUpperCase();
+  console.log('[main] QR Code détecté :', scannedKey);
+
+  const node = buildingGraph.getNode(scannedKey);
+  if (node) {
+    currentQrNodeId = scannedKey;
+    if ('vibrate' in navigator) {
+      try { navigator.vibrate([100, 50, 100]); } catch (e) {}
+    }
+    showStatusToast(`📍 Vous êtes ici : ${node.name}`, 6000);
+    closeScanOverlay();
+  } else {
+    showStatusToast(`⚠️ QR code inconnu : ${scannedKey}`, 3000);
+  }
+}
 
 /**
  * openScanOverlay
  * ---------------
- * Displays the scan viewfinder overlay and updates accessibility attributes.
+ * Displays the scan viewfinder overlay, starts the camera feed, and activates
+ * the QR code detection loop.
  */
-function openScanOverlay() {
+async function openScanOverlay() {
   if (!scanOverlayElement) return;
 
   if (uiOverlayElement) uiOverlayElement.inert = true;
@@ -598,15 +638,28 @@ function openScanOverlay() {
   if (closeScanButton) {
     closeScanButton.focus();
   }
+
+  // Start live camera QR scanner
+  if (scanVideoElement && scanCanvasElement) {
+    try {
+      await qrScanner.start(scanVideoElement, scanCanvasElement);
+    } catch (error) {
+      console.warn('[main] Accès caméra refusé ou indisponible :', error);
+      showStatusToast('Accès à la caméra refusé ou non disponible', 4000);
+    }
+  }
 }
 
 /**
  * closeScanOverlay
  * ----------------
- * Closes the scan viewfinder overlay and returns focus to the scanner button.
+ * Closes the scan viewfinder overlay, stops the camera, and returns focus to the scanner button.
  */
 function closeScanOverlay() {
   if (!scanOverlayElement) return;
+
+  // Stop camera feed and scanning loop
+  qrScanner.stop();
 
   scanOverlayElement.classList.remove('is-open');
   scanOverlayElement.setAttribute('aria-hidden', 'true');
@@ -906,7 +959,17 @@ function registerServiceWorker() {
  * UI handlers.
  */
 function init() {
-  // 1. Bind UI first so the shell remains usable if WebGL is unavailable
+  // 1. Connect QR detector and load building graph
+  qrScanner.onDetect((code) => handleQrDetection(code));
+  buildingGraph.loadGraph('assets/building.json')
+    .then(() => {
+      console.log('[Indoor Wayfinder] Plan du bâtiment chargé');
+    })
+    .catch((err) => {
+      console.warn('[Indoor Wayfinder] Erreur chargement plan :', err);
+    });
+
+  // 2. Bind UI first so the shell remains usable if WebGL is unavailable
   initUIEventListeners();
 
   try {

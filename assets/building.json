@@ -1,0 +1,131 @@
+{
+  "building": {
+    "name": "SUP'COM – Bâtiment A",
+    "floor": "Rez-de-chaussée",
+    "description": "Plan du rez-de-chaussée du bâtiment principal"
+  },
+  "nodes": {
+    "ENTREE": {
+      "name": "Entrée principale",
+      "x": 0,
+      "y": 0
+    },
+    "HALL": {
+      "name": "Hall principal",
+      "x": 10,
+      "y": 0
+    },
+    "COULOIR_EST": {
+      "name": "Couloir Est",
+      "x": 20,
+      "y": 0
+    },
+    "COULOIR_SUD": {
+      "name": "Couloir Sud",
+      "x": 10,
+      "y": -12
+    },
+    "COULOIR_OUEST": {
+      "name": "Couloir Ouest",
+      "x": 10,
+      "y": -24
+    },
+    "SALLE_B12": {
+      "name": "Salle B12",
+      "x": 20,
+      "y": -6
+    },
+    "SALLE_B14": {
+      "name": "Salle B14",
+      "x": 20,
+      "y": -12
+    },
+    "SALLE_B15": {
+      "name": "Salle B15",
+      "x": 20,
+      "y": -24
+    },
+    "LAB_INFO": {
+      "name": "Labo Informatique",
+      "x": 30,
+      "y": 0
+    },
+    "ADMIN": {
+      "name": "Administration",
+      "x": 10,
+      "y": -34
+    },
+    "BIBLIO": {
+      "name": "Bibliothèque",
+      "x": 20,
+      "y": -34
+    },
+    "AMPHI_A": {
+      "name": "Amphithéâtre A",
+      "x": 10,
+      "y": -44
+    }
+  },
+  "edges": [
+    {
+      "from": "ENTREE",
+      "to": "HALL",
+      "weight": 10
+    },
+    {
+      "from": "HALL",
+      "to": "COULOIR_EST",
+      "weight": 10
+    },
+    {
+      "from": "HALL",
+      "to": "COULOIR_SUD",
+      "weight": 12
+    },
+    {
+      "from": "COULOIR_EST",
+      "to": "SALLE_B12",
+      "weight": 6
+    },
+    {
+      "from": "COULOIR_EST",
+      "to": "LAB_INFO",
+      "weight": 10
+    },
+    {
+      "from": "COULOIR_EST",
+      "to": "SALLE_B14",
+      "weight": 12
+    },
+    {
+      "from": "COULOIR_SUD",
+      "to": "SALLE_B14",
+      "weight": 10
+    },
+    {
+      "from": "COULOIR_SUD",
+      "to": "COULOIR_OUEST",
+      "weight": 12
+    },
+    {
+      "from": "COULOIR_OUEST",
+      "to": "SALLE_B15",
+      "weight": 10
+    },
+    {
+      "from": "COULOIR_OUEST",
+      "to": "ADMIN",
+      "weight": 10
+    },
+    {
+      "from": "ADMIN",
+      "to": "BIBLIO",
+      "weight": 10
+    },
+    {
+      "from": "ADMIN",
+      "to": "AMPHI_A",
+      "weight": 10
+    }
+  ]
+}

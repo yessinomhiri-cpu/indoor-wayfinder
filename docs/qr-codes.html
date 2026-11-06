@@ -1,0 +1,213 @@
+<!--
+  ==========================================================================
+  Module       : qr-codes.html
+  Project      : Indoor Wayfinder – AR Indoor Navigation PWA
+  Team         : SUP'COM SIA – Indoor Wayfinder
+  Authors      : Amin, Yassine, Oussema
+  Created      : 2026-11-06
+  Modified     : 2026-11-06
+  Version      : 1.0.0
+  Description  : Printable test board containing all QR codes matching
+                 the nodes of SUP'COM Bâtiment A (assets/building.json).
+                 Used to test Week 2 ("Vous êtes ici") on phone or desktop.
+  ==========================================================================
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Indoor Wayfinder – Planches de QR Codes de Test</title>
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      max-width: 1000px;
+      margin: 0 auto 2rem auto;
+      text-align: center;
+      background: #ffffff;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      color: #1565c0;
+      margin-bottom: 0.5rem;
+    }
+
+    header p {
+      color: #555;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .instructions {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: #e3f2fd;
+      border-left: 4px solid #1976d2;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      text-align: left;
+    }
+
+    .print-btn {
+      margin-top: 1rem;
+      background: #1976d2;
+      color: #fff;
+      border: none;
+      padding: 0.6rem 1.4rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+
+    .print-btn:hover {
+      background: #0d47a1;
+    }
+
+    .grid {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 2px dashed #90caf9;
+      border-radius: 12px;
+      padding: 1.25rem;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      page-break-inside: avoid;
+    }
+
+    .card h3 {
+      font-size: 1.15rem;
+      color: #0d47a1;
+      margin-bottom: 0.25rem;
+    }
+
+    .card .node-id {
+      display: inline-block;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 0.85rem;
+      background: #e8eaf6;
+      color: #283593;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      margin-bottom: 0.8rem;
+      font-weight: bold;
+    }
+
+    .qr-image {
+      width: 180px;
+      height: 180px;
+      margin: 0.5rem auto;
+      display: block;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 6px;
+      background: #ffffff;
+    }
+
+    .coords {
+      font-size: 0.8rem;
+      color: #757575;
+      margin-top: 0.5rem;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      header, .print-btn, .instructions {
+        display: none;
+      }
+      .grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1cm;
+      }
+      .card {
+        border: 2px solid #333;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🧭 Indoor Wayfinder – QR Codes de Test (Bâtiment A)</h1>
+    <p>Chaque QR code encode l'identifiant exact d'un nœud défini dans <code>assets/building.json</code>.</p>
+    <div class="instructions">
+      <strong>Comment tester la Semaine 2 :</strong>
+      <ol style="margin-left: 1.5rem; margin-top: 0.4rem;">
+        <li>Ouvrez l'application Indoor Wayfinder sur votre téléphone ou émulateur.</li>
+        <li>Cliquez sur <strong>« 📷 Scanner »</strong> et acceptez l'accès caméra.</li>
+        <li>Pointez vers l'un des QR codes ci-dessous (sur écran ou imprimé).</li>
+        <li>L'application affichera instantanément <strong>« 📍 Vous êtes ici : [Nom du lieu] »</strong>.</li>
+      </ol>
+    </div>
+    <button class="print-btn" onclick="window.print()">🖨️ Imprimer la planche</button>
+  </header>
+
+  <main class="grid" id="qr-grid">
+    <!-- Generated dynamically below -->
+  </main>
+
+  <script>
+    // List of nodes matching assets/building.json
+    const nodes = [
+      { id: "ENTREE",        name: "Entrée principale",    x: 0,   y: 0   },
+      { id: "HALL",          name: "Hall principal",        x: 10,  y: 0   },
+      { id: "COULOIR_EST",   name: "Couloir Est",           x: 20,  y: 0   },
+      { id: "COULOIR_SUD",   name: "Couloir Sud",           x: 10,  y: -12 },
+      { id: "COULOIR_OUEST", name: "Couloir Ouest",         x: 10,  y: -24 },
+      { id: "SALLE_B12",     name: "Salle B12",             x: 20,  y: -6  },
+      { id: "SALLE_B14",     name: "Salle B14",             x: 20,  y: -12 },
+      { id: "SALLE_B15",     name: "Salle B15",             x: 20,  y: -24 },
+      { id: "LAB_INFO",      name: "Labo Informatique",     x: 30,  y: 0   },
+      { id: "ADMIN",         name: "Administration",        x: 10,  y: -34 },
+      { id: "BIBLIO",        name: "Bibliothèque",          x: 20,  y: -34 },
+      { id: "AMPHI_A",       name: "Amphithéâtre A",        x: 10,  y: -44 }
+    ];
+
+    const container = document.getElementById('qr-grid');
+
+    nodes.forEach(node => {
+      // Using QuickChart API for crisp high-resolution QR rendering
+      const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(node.id)}&size=200&margin=1`;
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <h3>${node.name}</h3>
+        <div class="node-id">ID: ${node.id}</div>
+        <img class="qr-image" src="${qrUrl}" alt="QR Code ${node.id}" loading="lazy" />
+        <div class="coords">Coordonnées plan: (${node.x}, ${node.y})</div>
+      `;
+      container.appendChild(card);
+    });
+  </script>
+
+</body>
+</html>
+
