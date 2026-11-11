@@ -11,8 +11,8 @@
 | **Brief** | Cahier des charges v1.0 — 24 October 2026 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Design notebook](docs/design-notebook.md) |
-| **App version** | `v2.1.0` (Sprint 3/4) |
-| **Sprint** | Sprints 1–3 complete; Sprint 4 code ready |
+| **App version** | `v2.2.0` (Sprint 4 + interactive plan) |
+| **Sprint** | Sprints 1–3 complete; interactive demo + Sprint 4 code |
 | **Last updated** | 2026-11-11 |
 
 ---
@@ -129,27 +129,27 @@ sequenceDiagram
 
 ## Screenshots
 
-Captured on **2026-11-11** from v2.1.0 at a 390 × 844 mobile viewport.
+Captured on **2026-11-11** from v2.2.0 at a 390 × 844 mobile viewport.
 
-| Home — 3D scene | Scanner — live camera |
+| Home — interactive floor plan | Scanner + QR fallback |
 |:---:|:---:|
-| <img src="docs/screenshots/01-home.png" width="280" alt="Home screen with Three.js scene"><br>**Home** — Three.js scene | <img src="docs/screenshots/02-scan.png" width="280" alt="Live camera scanner overlay"><br>**Scanner** — camera + QR overlay |
-| <img src="docs/screenshots/03-destinations.png" width="280" alt="Graph-generated destination list with real distances"><br>**Destinations** — 9 graph nodes, real distances | <img src="docs/screenshots/04-search.png" width="280" alt="Destination search filtered to Amphi A"><br>**Search** — live filtering |
+| <img src="docs/screenshots/01-home.png" width="280" alt="Interactive floor plan with 12 nodes and 12 edges"><br>**Home** — real building graph, not a cube | <img src="docs/screenshots/02-scan.png" width="280" alt="QR scanner overlay with image upload fallback"><br>**Scanner** — camera + image upload |
+| <img src="docs/screenshots/03-destinations.png" width="280" alt="Graph-generated destinations with real Dijkstra distances"><br>**Destinations** — 9 nodes, real distances | <img src="docs/screenshots/04-search.png" width="280" alt="Destination search filtered to Amphi A"><br>**Search** — live filtering |
 
-**Real Dijkstra route, captured from the app:**
+**Real Dijkstra route, highlighted on the plan:**
 
-<img src="docs/screenshots/05-route.png" width="320" alt="Route panel showing Amphi A, 54 metres and five steps">
+<img src="docs/screenshots/05-route.png" width="320" alt="Route panel showing Salle B12, 26 metres and three steps">
 
-The scanner screenshot uses a simulated camera feed in headless Chrome; on a
-phone it shows the real camera. The route distances are computed from
-`assets/building.json`, not hard-coded.
+The scanner screenshot uses a simulated camera feed in headless Chrome; the
+upload button is the real desktop fallback. Distances and the cyan path come
+from `assets/building.json` + Dijkstra, not hard-coded values.
 
 ---
 
 ## What is already built
 
 Sprints 1–3 are complete; the Sprint 4 WebXR code is ready for device testing
-(**v2.1.0**).
+and the home screen is a real interactive floor plan (**v2.2.0**).
 
 ### 1. Mobile-first PWA shell — `index.html`
 
@@ -159,7 +159,16 @@ Sprints 1–3 are complete; the Sprint 4 WebXR code is ready for device testing
 - PWA icons, manifest and offline Service Worker.
 - Running status toast, online/offline badge and persistent position chip.
 
-### 2. Real QR scanner — `src/scanner.js`
+### 2. Interactive floor plan — `index.html`, `main.js`
+
+- SVG plan generated from `assets/building.json`: 12 nodes, 12 edges.
+- Functionally labelled rooms and corridors; `AR : disponible/non disponible` badge.
+- Click a node to simulate a QR position — explicitly labelled **Démo**.
+- Dijkstra path highlighted in cyan; route panel with real distance and steps.
+- QR image upload fallback for desktops without a camera.
+- The Three.js canvas is hidden outside AR; no floating cube on the home screen.
+
+### 3. Real QR scanner — `src/scanner.js`
 
 - Rear camera via `getUserMedia`, native `BarcodeDetector`, jsQR fallback.
 - One detection every 150 ms, 2 s cooldown per value, no overlapping decodes.
@@ -167,7 +176,7 @@ Sprints 1–3 are complete; the Sprint 4 WebXR code is ready for device testing
   the permission prompt; camera tracks are always released.
 - QR payload = graph node ID (`ENTREE`, `SALLE_B12`, …).
 
-### 3. Building graph and real routing — `navigation.js`, `main.js`
+### 4. Building graph and real routing — `navigation.js`, `main.js`
 
 - `assets/building.json`: 12 nodes, 12 weighted edges, one floor.
 - Adjacency list + Dijkstra + `AvoidStairsStrategy` extension point.
@@ -176,7 +185,7 @@ Sprints 1–3 are complete; the Sprint 4 WebXR code is ready for device testing
 - Position updates on each QR scan and recomputes the route immediately.
 - Nine Node tests cover nodes, edges, paths, distances and reachability.
 
-### 4. WebXR augmented reality — `src/ar.js`
+### 5. WebXR augmented reality — `src/ar.js`
 
 - Support probe with `navigator.xr.isSessionSupported('immersive-ar')`.
 - `requestSession` with `hit-test`, optional `anchors` and `dom-overlay`.
@@ -185,11 +194,14 @@ Sprints 1–3 are complete; the Sprint 4 WebXR code is ready for device testing
 - `XRAnchor` keeps the arrow stable; graceful fallback when unsupported.
 - Start/stop AR controls and session cleanup.
 
-### 5. What was verified (2026-11-11)
+### 6. What was verified (2026-11-11)
 
 - Dijkstra: 9/9 Node tests pass; Salle B12 = 26 m, Amphi A = 54 m.
 - Fake-camera integration: `ENTREE` QR → position chip → 9 graph destinations
   with real distances → Salle B12 route 26 m · 3 steps.
+- QR image upload: `ENTREE` decoded on desktop → same position/route.
+- Floor plan: 12 nodes, 12 edges, 9 labels, 3 highlighted route edges.
+- Map click: HALL → Salle B12 recomputes to 16 m / 2 steps.
 - AR unsupported path: clear message, no crash.
 - Closed dialogs skipped by Tab, focus trapped, camera released on close.
 - WebGL/CDN failure fallbacks, offline reload and manifest/icons still pass.

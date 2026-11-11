@@ -1,6 +1,6 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 2.1.0 — Sprint 3/4
+**Version :** 2.2.0 — Sprint 3/4
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
@@ -78,10 +78,19 @@ node --test scripts/test-navigation.mjs
 Les tests vérifient les nœuds, les arêtes, les poids, l'accessibilité depuis
 l'entrée et les itinéraires de référence.
 
+### 4.1 Vue plan interactif
+
+`src/main.js` lit `getAllNodes()` / `getEdges()` et dessine le graphe en SVG.
+Le chemin Dijkstra est surligné en cyan. Un clic sur un nœud appelle
+`setCurrentNode()` : c'est un mode démonstration explicite, équivalent à un
+scan QR, pour permettre une démonstration sur ordinateur sans caméra.
+
 ## 5. QR codes
 
 Chaque QR encode **l'identifiant exact d'un nœud**, par exemple `ENTREE`,
 `HALL`, `SALLE_B12`. Le scanner normalise la valeur en majuscules.
+Sur ordinateur, le bouton **Importer une image QR** décode un fichier image
+avec le même backend (`BarcodeDetector` ou jsQR).
 
 Génération locale :
 
@@ -139,10 +148,14 @@ demande de permission.
 6. sur `select`, place la flèche et crée un `XRAnchor` ;
 7. restaure la scène à la fin de la session.
 
+La page d'accueil est le plan SVG. `setARView(true)` masque le plan et affiche
+le canvas Three.js avant la session ; `setARView(false)` restaure le plan à la
+fin. Le cube de démonstration est masqué hors AR.
+
 La flèche est générée par `createArrow()` : forme extrudée plate de 1 m,
 origine à la queue, pointe vers +Z, matériau non éclairé.
 
-**Limite v2.1.0 :** l'orientation utilise la direction de la caméra au moment
+**Limite v2.2.0 :** l'orientation utilise la direction de la caméra au moment
 du placement. La calibration au nord du bâtiment (orientation du QR ou
 boussole) est prévue au Sprint 5.
 
@@ -170,7 +183,9 @@ Vérifications manuelles :
 - QR `ENTREE` scanné → pastille « Vous êtes ici : Entrée principale » ;
 - destination Salle B12 → itinéraire 26 m en 3 étapes ;
 - bouton Guidage AR → session si WebXR/ARCore est disponible, sinon message ;
-- mode avion après un premier chargement → le shell et Three.js démarrent.
+- mode avion après un premier chargement → le shell et Three.js démarrent ;
+- plan : 12 nœuds, 12 arêtes, 9 libellés, clic `ENTREE` → `SALLE_B12` = 26 m ;
+- upload QR sur ordinateur → même position et même itinéraire.
 
 ## 11. Limites connues
 
