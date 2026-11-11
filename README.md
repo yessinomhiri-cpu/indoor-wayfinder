@@ -11,6 +11,7 @@
 | **Brief** | Cahier des charges v1.0 — 24 October 2026 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Design notebook](docs/design-notebook.md) |
+| **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — HTTPS preview deployed from `main` |
 | **App version** | `v2.2.0` (Sprint 4 + interactive plan) |
 | **Sprint** | Sprints 1–3 complete; interactive demo + Sprint 4 code |
 | **Last updated** | 2026-11-11 |
@@ -410,7 +411,11 @@ Target: **GitHub Pages**, static, HTTPS by default.
 3. Branch: `main`, folder: `/ (root)`.
 4. Save; GitHub publishes to `https://<owner>.github.io/indoor-wayfinder/`.
 
-**Current state:** not enabled. The URL returns 404, so there is no public demo and no place to test camera/WebXR over HTTPS yet. Enabling Pages is an admin action on the repository.
+**GitHub Pages state:** not enabled. The URL returns 404; enabling Pages is an admin action on the repository.
+
+**Working HTTPS preview:** <https://indoor-wayfinder-lyart.vercel.app> — a static
+deployment of the same `main` branch. Use it to test the camera and WebXR on an
+Android phone while GitHub Pages is being enabled.
 
 > HTTPS is not optional: Chrome refuses camera access and WebXR sessions on plain HTTP (except `localhost`).
 
