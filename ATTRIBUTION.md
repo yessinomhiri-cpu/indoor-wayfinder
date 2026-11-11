@@ -1,123 +1,101 @@
-# Attribution et origine des ressources
+# 📄 Fichier d'Attribution et d'Origine des Ressources (ATTRIBUTION.md)
 
 **Projet :** Indoor Wayfinder — Navigation intérieure en réalité augmentée
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
-**Superviseur :** Mohamed-Becha Kaâniche
-**Cours :** INDP3-SIA 26-27 — Projets Réalité Étendue
+**Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
+**Version :** 1.1 — Évaluation SUP'COM (2026/2027)
 **Dernière mise à jour :** 11 novembre 2026
-**Responsable du fichier :** Oussema Harrabi
-
-> Ce fichier est mis à jour à chaque sprint et à chaque ajout de ressource externe.
-> Il couvre les assets, les bibliothèques, les extraits de code et l'usage des assistants IA.
-
-## Journal des mises à jour
-
-| Date | Version | Auteur | Changement |
-|---|---|---|---|
-| 2026-11-06 | 1.0 | Yassine Mhiri | Création initiale (Sprint 2) |
-| 2026-11-11 | 1.1 | Oussema Harrabi | Audit complet, ressources et outils IA documentés, sections « À COMPLÉTER » supprimées |
 
 ---
 
-## 1. Assets graphiques, icônes et polices
+## 1. Modèles 3D, Textures et Assets Graphiques
 
-### Cube de démonstration — `createCube()`
+Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
 
-- **Fichier :** `src/main.js`
-- **Origine :** créé par l'équipe avec Three.js (`BoxGeometry`, `EdgesGeometry`, `LineSegments`)
-- **Auteur :** équipe Indoor Wayfinder
-- **Licence :** code du projet
-- **Modifications :** aucune ressource externe ; géométrie et matériaux paramétrés dans le code
+*   **Asset :** Cube de démonstration (`createCube()` dans `src/main.js`)
+    *   **Source originale :** Aucune URL externe — géométrie générée par code avec Three.js (`BoxGeometry`, `EdgesGeometry`, `LineSegments`)
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet (projet académique SUP'COM)
+    *   **Modifications apportées par l'équipe :** Objet créé pour la scène de démonstration ; matériau cyan et arêtes ajoutés par l'équipe
 
-### Flèche de navigation — `createArrow()`
+*   **Asset :** Flèche de navigation (`createArrow()` dans `src/main.js`)
+    *   **Source originale :** Aucune URL externe — forme 2D (`THREE.Shape`) extrudée avec `ExtrudeGeometry`
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet
+    *   **Modifications apportées par l'équipe :** Flèche plate de 1 m, origine à la queue, pointe vers +Z, matériau non éclairé ; remplace l'ancienne flèche cylindre + cône
 
-- **Fichier :** `src/main.js`
-- **Origine :** créée par l'équipe. Forme 2D (`THREE.Shape`) extrudée avec `ExtrudeGeometry`, posée à plat sur le sol, orientée vers +Z.
-- **Auteur :** équipe Indoor Wayfinder
-- **Licence :** code du projet
-- **Modifications :** remplace l'ancienne flèche cylindre + cône ; aucune texture ni modèle GLB externe
+*   **Asset :** Halo au sol (`createGroundShadow()` dans `src/main.js`)
+    *   **Source originale :** Aucune URL externe — texture générée à l'exécution sur un canvas 2D (dégradé radial)
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet
+    *   **Modifications apportées par l'équipe :** Dégradé cyan, opacité et échelle animées avec le cube
 
-### Halo au sol — `createGroundShadow()`
+*   **Asset :** Icônes PWA (`assets/icons/icon-180.png`, `icon-192.png`, `icon-512.png`, `maskable-192.png`, `maskable-512.png`)
+    *   **Source originale :** Aucune URL externe — générées par l'équipe avec Python/Pillow à partir du logo boussole du projet
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet
+    *   **Modifications apportées par l'équipe :** Variantes `any` et `maskable`, marges de sécurité, export PNG 180/192/512
 
-- **Fichier :** `src/main.js`
-- **Origine :** texture générée à l'exécution sur un canvas 2D (dégradé radial)
-- **Auteur :** équipe Indoor Wayfinder
-- **Licence :** code du projet
-- **Modifications :** aucune image externe
+*   **Asset :** Icônes SVG de l'interface (`index.html`)
+    *   **Source originale :** Aucune URL externe — SVG inline dessinés par l'équipe (boussole, scanner, destination, recherche, fermeture, AR)
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet
+    *   **Modifications apportées par l'équipe :** Aucune bibliothèque d'icônes externe
 
-### Icônes de la PWA — `assets/icons/`
+*   **Asset :** Police de caractères
+    *   **Source originale :** Pile de polices système : `system-ui`, `-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, `Roboto`, `Helvetica`, `Arial`
+    *   **Auteur / Créateur :** Fournisseurs des systèmes d'exploitation et navigateurs
+    *   **Licence :** Licences système/navigateur ; aucune police web n'est redistribuée
+    *   **Modifications apportées par l'équipe :** Aucune police téléchargée ni modifiée
 
-- **Fichiers :** `icon-180.png`, `icon-192.png`, `icon-512.png`, `maskable-192.png`, `maskable-512.png`
-- **Origine :** générées par l'équipe avec Python/Pillow à partir du logo boussole du projet
-- **Auteur :** équipe Indoor Wayfinder
-- **Licence :** code du projet
-- **Modifications :** variantes `any` et `maskable` avec marges de sécurité
+*   **Asset :** Planche de QR codes de test (`docs/qr-codes.html`)
+    *   **Source originale :** Page HTML de l'équipe ; images QR générées à la volée par l'API externe QuickChart — https://quickchart.io/qr
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder pour la page ; service QuickChart pour le rendu QR
+    *   **Licence :** Code de la page : projet ; service QuickChart : conditions d'utilisation du service externe
+    *   **Modifications apportées par l'équipe :** Paramètres `text`, `size` et `margin` pour imprimer les identifiants de nœuds du plan
 
-### Icônes SVG de l'interface
-
-- **Fichiers :** `index.html` (SVG inline : boussole, scanner, destination, recherche, fermeture)
-- **Origine :** dessinées par l'équipe pour ce projet
-- **Auteur :** équipe Indoor Wayfinder
-- **Licence :** code du projet
-- **Modifications :** aucune bibliothèque d'icônes externe
-
-### Police de caractères
-
-- **Origine :** pile de polices système (`system-ui`, `-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, `Roboto`, `Helvetica`, `Arial`)
-- **Licence :** polices fournies par le système d'exploitation / le navigateur
-- **Modifications :** aucune police web téléchargée
-
-### Planche de QR codes de test — `docs/qr-codes.html`
-
-- **Origine :** page HTML de l'équipe ; les images QR sont générées à la volée par l'API externe **QuickChart** (`https://quickchart.io/qr`)
-- **Auteur :** équipe Indoor Wayfinder
-- **Licence :** code de la page : projet ; service QuickChart : service externe gratuit, soumis à ses propres conditions
-- **Remarque :** cette page est un outil de test, pas une ressource embarquée dans l'application. Pour une utilisation hors ligne, les QR peuvent être générés localement avec `qrencode` ou Python `qrcode` (voir `docs/technical.md`).
-
-### Modèle 3D de la flèche au format GLB
-
-- **Statut :** aucun modèle GLB n'est utilisé. La flèche est générée par code. Cette entrée est conservée pour documenter l'absence de ressource externe.
+*   **Asset :** Modèle 3D de la flèche au format GLB
+    *   **Source originale :** Aucun modèle GLB importé
+    *   **Auteur / Créateur :** Sans objet
+    *   **Licence :** Sans objet
+    *   **Modifications apportées par l'équipe :** La flèche est générée par code ; cette entrée documente explicitement l'absence de ressource externe
 
 ---
 
-## 2. Bibliothèques et modules externes
+## 2. Bibliothèques tierces et Modules externes (Pinnés)
 
-Toutes les versions sont figées ; aucune dépendance `latest` n'est utilisée.
+Rappel : L'usage des versions "latest" depuis les CDN est proscrit.
 
-### Three.js
+*   **Bibliothèque :** Three.js
+    *   **Version fixée :** 0.160.0 (r160)
+    *   **Lien CDN de référence :** https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js
+    *   **Rôle dans le projet :** Moteur de rendu 3D : scène, caméra, renderer, géométries, matériaux, boucle de rendu et intégration WebXR (`renderer.xr`) dans `src/main.js` et `src/ar.js`
 
-- **Version :** 0.160.0 (r160)
-- **URL :** https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js
-- **Addons :** https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/
-- **Licence :** MIT
-- **Rôle :** scène, caméra, renderer, géométries, matériaux, boucle de rendu, intégration WebXR (`renderer.xr`)
-- **Fichiers :** `index.html` (import map), `src/main.js`, `src/ar.js`
+*   **Bibliothèque :** Three.js addons (import map)
+    *   **Version fixée :** 0.160.0 (r160)
+    *   **Lien CDN de référence :** https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/
+    *   **Rôle dans le projet :** Chemin d'import réservé aux modules complémentaires Three.js ; aucun addon externe n'est utilisé à ce jour
 
-### jsQR
+*   **Bibliothèque :** jsQR
+    *   **Version fixée :** 1.4.0
+    *   **Lien CDN de référence :** https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm
+    *   **Rôle dans le projet :** Décodage des QR codes lorsque `BarcodeDetector` n'est pas disponible ; chargé dynamiquement dans `src/scanner.js`, mis en cache par `sw.js`
 
-- **Version :** 1.4.0
-- **URL :** https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm
-- **Licence :** Apache-2.0
-- **Rôle :** décodage des QR codes lorsque `BarcodeDetector` n'est pas disponible
-- **Statut :** actif dans `src/scanner.js` (solution de secours), chargé dynamiquement
-- **Fichiers :** `index.html` (import map), `src/scanner.js`, `sw.js` (cache)
-
-### APIs natives du navigateur
-
-Aucune bibliothèque externe supplémentaire :
-
-- **WebXR Device API** — session `immersive-ar`, hit testing, ancres
-- **`getUserMedia`** — flux caméra arrière
-- **`BarcodeDetector`** — décodage natif des QR codes (Chrome Android)
-- **Vibration API** — retour haptique à la détection
-- **Screen Wake Lock** — écran maintenu allumé pendant le guidage (Sprint 5)
-- **Service Worker / Cache API** — fonctionnement hors ligne
+*   **Bibliothèque :** API natives du navigateur (aucune bibliothèque tierce)
+    *   **Version fixée :** APIs standard du navigateur (pas de version CDN)
+    *   **Lien CDN de référence :** Sans objet
+    *   **Rôle dans le projet :** WebXR Device API (`immersive-ar`, hit test, ancres), `getUserMedia` (caméra arrière), `BarcodeDetector` (QR natif), Vibration API, Screen Wake Lock (Sprint 5), Service Worker/Cache API
 
 ---
 
-## 3. Extraits de code copiés ou adaptés
+## 3. Extraits de code copiés ou adaptés (StackOverflow, Tutoriels, Dépôts tiers)
 
-**Constat au 11 novembre 2026 :** aucun extrait de code tiers n'a été copié tel quel dans les modules `src/`. Les implémentations ont été écrites par l'équipe avec l'assistance IA déclarée en section 4, à partir de la documentation officielle et des spécifications.
+L'usage de code tiers sans citation est un motif d'annulation de la note technique.
+
+*   **Fonction / Fichier :** Aucun extrait de code tiers copié ou adapté dans `src/`
+    *   **Source du code original :** Sans objet — les modules ont été écrits par l'équipe avec l'assistance IA déclarée en section 4, à partir de la documentation officielle
+    *   **Auteur :** Équipe Indoor Wayfinder
+    *   **Adaptation effectuée :** Aucune adaptation d'un extrait externe ; les références ci-dessous ont été consultées pour comprendre les APIs, pas copiées
 
 Références techniques consultées :
 
@@ -125,50 +103,54 @@ Références techniques consultées :
 |---|---|
 | WebXR `immersive-ar`, `hit-test`, ancres | https://immersiveweb.dev/ et spécification W3C WebXR Device API |
 | Three.js WebXR | https://threejs.org/docs/#api/en/renderers/webxr/WebXRManager |
-| Three.js `ExtrudeGeometry`, `Shape` | https://threejs.org/docs/ |
+| Three.js `Shape` / `ExtrudeGeometry` | https://threejs.org/docs/ |
 | `getUserMedia` | https://developer.mozilla.org/fr/docs/Web/API/MediaDevices/getUserMedia |
 | `BarcodeDetector` | https://developer.mozilla.org/en-US/docs/Web/API/BarcodeDetector |
 | jsQR | https://github.com/cozmo/jsQR |
-| Dijkstra | cours d'algorithmique / documentation algorithmique standard |
+| Dijkstra | Cours d'algorithmique / documentation algorithmique standard |
 
-Si un extrait tiers est ajouté plus tard, il devra être ajouté ici avec :
-
-- le fichier et les lignes concernées,
-- l'URL source,
-- l'auteur,
-- la licence,
-- l'adaptation réalisée.
+Si un extrait tiers est ajouté plus tard, il devra être consigné ici avec le fichier et les lignes, l'URL source, l'auteur, la licence et l'adaptation réalisée.
 
 ---
 
-## 4. Déclaration de l'usage des assistants IA
+## 4. Déclaration de l'usage des Assistants IA (Copilot, ChatGPT, Claude)
 
-L'IA est utilisée comme outil d'assistance. Les choix d'architecture suivent le cahier des charges v1.0 (24 octobre 2026). Chaque production est relue, testée et validée par un membre de l'équipe avant d'être commitée.
+L'utilisation d'IA est un outil de complétion. Elle doit être documentée et maîtrisée.
 
-| Outil | Usage | Période | Validation |
-|---|---|---|---|
-| **Claude** (Anthropic) | analyse du cahier des charges, explication, planification, revue | novembre 2026 | relecture équipe |
-| **Antigravity** | assistance à l'implémentation du Sprint 1 / Sprint 2 | novembre 2026 | relecture équipe |
-| **OMP** (agent de codage) | audit du Sprint 1, corrections accessibilité/PWA, documentation, intégration Sprint 3–4 | 5 et 11 novembre 2026 | relecture équipe, tests navigateur/Node |
+**Outils utilisés par l'équipe :** Claude (Anthropic), Antigravity, OMP (agent de codage). Aucun autre assistant IA n'est utilisé pour le code du dépôt à ce jour.
 
-Aucun autre assistant IA n'est utilisé pour le code du dépôt à ce jour. Cette liste doit être mise à jour si un nouvel outil est employé.
+*   **Composant ou Shader concerné :** Shell PWA et design system (`index.html`)
+    *   **Prompt ou usage principal :** Génération de la structure mobile-first, du système de design glassmorphism, des dialogues scanner/destination et des états d'accessibilité
+    *   **Axe de vérification appliqué par l'étudiant :** Relecture de l'équipe, rendu dans Chrome desktop/mobile, parcours clavier (Tab/Escape), contraste AA, captures d'écran, validation du manifest
+
+*   **Composant ou Shader concerné :** Scène Three.js (`src/main.js` — `createScene`, `createCamera`, `createRenderer`, `createCube`, `createGroundShadow`, `startAnimationLoop`)
+    *   **Prompt ou usage principal :** Génération de la scène de démonstration, du cube à arêtes, de la grille, du brouillard, du halo et de la boucle de rendu
+    *   **Axe de vérification appliqué par l'étudiant :** Console `Three.js r160`, captures, test `prefers-reduced-motion`, redimensionnement/orientation, fallback WebGL, relecture du code
+
+*   **Composant ou Shader concerné :** Scanner caméra et QR (`src/scanner.js`)
+    *   **Prompt ou usage principal :** Implémentation de `getUserMedia`, de `BarcodeDetector`, du fallback jsQR, de la boucle de détection et de la libération caméra
+    *   **Axe de vérification appliqué par l'étudiant :** Test avec caméra simulée sur le QR `ENTREE`, vérification de la libération des pistes, test de fermeture pendant la permission, `node --check`, test Android réel encore à faire
+
+*   **Composant ou Shader concerné :** Graphe et routage (`src/navigation.js`, `assets/building.json`)
+    *   **Prompt ou usage principal :** Génération de la liste d'adjacence, de Dijkstra, des stratégies et des helpers de distance/direction
+    *   **Axe de vérification appliqué par l'étudiant :** 9 tests Node (`node --test scripts/test-navigation.mjs`) : nœuds, arêtes, poids, chemins `ENTREE → SALLE_B12` (26 m) et `ENTREE → AMPHI_A` (54 m), accessibilité de tous les nœuds
+
+*   **Composant ou Shader concerné :** Destinations et itinéraire UI (`src/main.js` — `renderDestinationList`, `updateRouteForCurrentDestination`, `selectDestination`)
+    *   **Prompt ou usage principal :** Remplacement des fausses distances par les données du graphe, génération des cartes de destination, panneau d'itinéraire et recalcul après scan
+    *   **Axe de vérification appliqué par l'étudiant :** Test de bout en bout avec caméra simulée : QR `ENTREE` → 9 destinations → Salle B12 26 m / 3 étapes → Amphi A 54 m / 5 étapes ; contrôle des identifiants de nœuds et de `aria-pressed`
+
+*   **Composant ou Shader concerné :** Guidage AR (`src/ar.js`, intégration dans `src/main.js`)
+    *   **Prompt ou usage principal :** Implémentation de la session `immersive-ar`, de `hit-test`, du réticule au sol, de `XRAnchor`, de la flèche et du nettoyage de session
+    *   **Axe de vérification appliqué par l'étudiant :** `node --check`, chargement de la page sans erreur, test du chemin « AR non supportée », revue du cycle de session et des ressources ; **test physique Android/ARCore encore requis**
+
+*   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
+    *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, navigation network-first, assets cache-first), du manifeste et des icônes
+    *   **Axe de vérification appliqué par l'étudiant :** Rechargement hors ligne après contrôle du SW, cache `v2.1.0`, vérification JSON du manifeste, requêtes d'icônes 200, contrôle des tailles 192/512
+
+*   **Composant ou Shader concerné :** Documentation (`README.md`, `docs/technical.md`, `docs/user-manual.md`, `docs/design-notebook.md`)
+    *   **Prompt ou usage principal :** Rédaction et mise à jour de la documentation technique, du manuel utilisateur, du design notebook UML et du README
+    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les tests et le cahier des charges ; liens vérifiés ; captures d'écran recapturées après les changements
 
 ---
 
-## 5. Licences et conformité
-
-- **Code du projet :** projet académique SUP'COM — INDP3-SIA 26-27. Le code est produit par l'équipe pour ce projet.
-- **Three.js :** MIT — conserver la notice de licence lors d'une redistribution.
-- **jsQR :** Apache-2.0 — conserver la notice de licence lors d'une redistribution.
-- **QuickChart :** service externe utilisé uniquement par la planche de QR de test ; aucune image n'est revendiquée comme asset du projet.
-- **Polices :** polices système, aucune redistribution.
-- **Assets 3D / textures / icônes :** créés par l'équipe ou générés par code, sauf mention contraire.
-
----
-
-## 6. Règle de maintenance
-
-1. Toute nouvelle bibliothèque, image, police, modèle 3D, service externe ou extrait de code doit être ajouté ici **avant** le commit qui l'introduit.
-2. Le journal des mises à jour doit être complété à chaque sprint.
-3. Le fichier doit être présent à la racine du dépôt sous le nom exact `ATTRIBUTION.md`.
-4. Une absence ou un fichier non mis à jour entraîne la note de suivi à zéro, conformément à la consigne du superviseur.
+*Ce fichier est mis à jour à chaque sprint et avant chaque commit introduisant une ressource externe. Une absence ou un fichier non mis à jour entraîne la note de suivi à zéro, conformément à la consigne du superviseur.*
