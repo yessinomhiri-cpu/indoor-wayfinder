@@ -3,6 +3,52 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.0] - 2026-11-11
+
+Sprint 2–4: real QR localization, real Dijkstra routing and the first
+`immersive-ar` implementation. Response to the first evaluation (C-- / A / C).
+
+### Added
+
+- `src/scanner.js`: rear camera, native `BarcodeDetector`, jsQR fallback.
+- `src/navigation.js`: weighted graph, adjacency list, Dijkstra and Strategy.
+- `assets/building.json`: 12 nodes and 12 edges for Bâtiment A.
+- Graph-driven destination list with computed distances (no hard-coded metres).
+- Route panel with total distance, ordered legs and per-leg distances.
+- `src/ar.js`: `immersive-ar`, hit test, `XRAnchor`, floor reticle and arrow.
+- AR start/stop controls and unsupported-device fallback.
+- Position chip, rescan actions and route recalculation after each QR.
+- Nine Node tests for the graph and routing.
+- `docs/technical.md`, `docs/user-manual.md`, `docs/design-notebook.md`.
+- Completed `ATTRIBUTION.md` with assets, licenses and AI tools.
+
+### Changed
+
+- Destination IDs now match graph node IDs (`SALLE_B12`, `AMPHI_A`, …).
+- Scanner throttles detection to ~6 fps and cancels pending starts safely.
+- Service Worker cache bumped to `v2.1.0` and includes scanner/navigation/AR.
+- File headers and package version bumped to 2.1.0.
+- README updated with current status, screenshots and verification evidence.
+
+### Verified
+
+- `node --test scripts/test-navigation.mjs`: 9/9.
+- Fake-camera `ENTREE` QR → position chip → 9 destinations → Salle B12 route
+  26 m / 3 steps.
+- AR unsupported path returns a clear message without a JS error.
+- Offline shell and accessibility checks still pass.
+
+## [2.0.0] - 2026-11-06
+
+Sprint 2 initial integration by Yassine Mhiri.
+
+### Added
+
+- Live camera viewfinder and QR scanner module.
+- Building graph JSON and Dijkstra module.
+- Printable QR test board and draft attribution file.
+- Service Worker cache entries for the new modules and jsQR.
+
 ## [1.2.0] - 2026-11-05
 
 Sprint 1 audit: accessibility, failure handling, offline support and AR readiness.

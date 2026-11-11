@@ -46,6 +46,13 @@
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Écran d'accueil avec la scène 3D"
+    },
+    {
+      "src": "docs/screenshots/05-route.png",
+      "sizes": "488x1055",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Itinéraire calculé par Dijkstra"
     }
   ]
 }
