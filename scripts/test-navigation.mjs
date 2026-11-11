@@ -25,6 +25,12 @@ test('building graph exposes every declared node', () => {
   assert.equal(graph.getBuildingInfo().floor, 'Rez-de-chaussée');
 });
 
+test('building graph exposes nodes and edges for the floor plan', () => {
+  const graph = createGraph();
+  assert.equal(graph.getAllNodes().length, Object.keys(buildingData.nodes).length);
+  assert.equal(graph.getEdges().length, buildingData.edges.length);
+});
+
 test('every edge endpoint exists and has a positive weight', () => {
   const nodeIds = new Set(Object.keys(buildingData.nodes));
 

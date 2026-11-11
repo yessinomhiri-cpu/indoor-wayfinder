@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-11
- * Version      : 2.1.0 (Sprint 3 – graph + Dijkstra)
+ * Version      : 2.2.0 (Sprint 3 – graph + Dijkstra)
  * Description  : Loads the building graph from a JSON file, stores it as
  *                an adjacency list, and exposes pathfinding via the
  *                Strategy pattern (ShortestPathStrategy by default).
@@ -187,6 +187,9 @@ export class BuildingGraph {
    */
   #adjacency = new Map();
 
+  /** @type {Array<{from:string, to:string, weight:number}>} Original edges */
+  #edges = [];
+
   /** @type {RouteStrategy}  Active routing strategy */
   #strategy = new ShortestPathStrategy();
 
@@ -226,6 +229,7 @@ export class BuildingGraph {
     // --- Parse nodes ---
     this.#nodes.clear();
     this.#adjacency.clear();
+    this.#edges = [];
 
     for (const [nodeId, nodeData] of Object.entries(data.nodes)) {
       this.#nodes.set(nodeId, {
@@ -246,6 +250,7 @@ export class BuildingGraph {
         continue;
       }
 
+      this.#edges.push({ from, to, weight });
       this.#adjacency.get(from).push({ nodeId: to, weight });
       this.#adjacency.get(to).push({ nodeId: from, weight });
     }
@@ -288,6 +293,28 @@ export class BuildingGraph {
     // Sort alphabetically by display name
     destinations.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     return destinations;
+  }
+
+  /**
+   * getAllNodes
+   * -----------
+   * Returns every graph node with its coordinates, for the floor-plan view.
+   *
+   * @returns {Array<{ id:string, name:string, x:number, y:number }>}
+   */
+  getAllNodes() {
+    return Array.from(this.#nodes, ([id, node]) => ({ id, ...node }));
+  }
+
+  /**
+   * getEdges
+   * --------
+   * Returns a copy of the original weighted edges.
+   *
+   * @returns {Array<{ from:string, to:string, weight:number }>}
+   */
+  getEdges() {
+    return this.#edges.map((edge) => ({ ...edge }));
   }
 
   /**
