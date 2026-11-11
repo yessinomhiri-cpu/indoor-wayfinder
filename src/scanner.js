@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-11
- * Version      : 2.1.0 (Sprint 2/3 – QR camera reader)
+ * Version      : 2.2.0 (Sprint 2/3 – QR camera reader)
  * Description  : Reads QR codes from the device camera. Uses the native
  *                BarcodeDetector API when available (Chrome Android 83+),
  *                and falls back to the jsQR library loaded from jsDelivr.
@@ -173,6 +173,45 @@ export class QrScanner {
    */
   onDetect(callback) {
     this.#onDetectCallback = callback;
+  }
+
+  /**
+   * scanImage
+   * ---------
+   * Decodes a QR code from an uploaded image file. Useful on desktops without
+   * a camera and as a fallback when camera permission is denied.
+   *
+   * @param {File} file – Image file chosen by the user.
+   * @returns {Promise<string|null>} QR payload, or null when none is found.
+   */
+  async scanImage(file) {
+    await this.#backendReady;
+    if (this.#useJsQrFallback) {
+      await loadJsQR();
+    }
+
+    const bitmap = await createImageBitmap(file);
+    const maxSide = 1024;
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(bitmap, 0, 0, width, height);
+    if (typeof bitmap.close === 'function') bitmap.close();
+
+    if (!this.#useJsQrFallback && this.#nativeDetector) {
+      const barcodes = await this.#nativeDetector.detect(canvas);
+      return barcodes.length > 0 ? barcodes[0].rawValue : null;
+    }
+
+    if (!jsQRFunction) return null;
+    const imageData = context.getImageData(0, 0, width, height);
+    const result = jsQRFunction(imageData.data, imageData.width, imageData.height);
+    return result ? result.data : null;
   }
 
   /**
