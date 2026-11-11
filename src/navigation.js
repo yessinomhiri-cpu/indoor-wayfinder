@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-04
- * Version      : 0.1.0 (Week 1 – Building graph + Dijkstra)
+ * Modified     : 2026-11-11
+ * Version      : 2.1.0 (Sprint 3 – graph + Dijkstra)
  * Description  : Loads the building graph from a JSON file, stores it as
  *                an adjacency list, and exposes pathfinding via the
  *                Strategy pattern (ShortestPathStrategy by default).
@@ -209,6 +209,18 @@ export class BuildingGraph {
     }
 
     const data = await response.json();
+    this.loadFromData(data);
+  }
+
+  /**
+   * loadFromData
+   * ------------
+   * Builds the graph from an already-parsed object. Kept separate from
+   * loadGraph so routing can be tested without HTTP.
+   *
+   * @param {Object} data – Parsed building.json content.
+   */
+  loadFromData(data) {
     this.#buildingMeta = data.building;
 
     // --- Parse nodes ---
