@@ -3,6 +3,35 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.0] - 2026-11-11
+
+Concrete demo pass: the home screen is now the real building graph, not the
+demo cube.
+
+### Added
+
+- Interactive SVG floor plan generated from `assets/building.json`.
+- Click a graph node to simulate a QR position (explicitly labelled demo).
+- Dijkstra route highlighted on the map with total distance and steps.
+- QR image upload fallback for desktop browsers without a camera.
+- WebXR support badge (`AR : disponible` / `AR : non disponible`).
+- Map/AR view switch: the Three.js canvas is shown only during AR.
+
+### Changed
+
+- The demo cube, grid and ground glow are hidden outside AR.
+- Map is the default view; 3D rendering is skipped while the map is visible.
+- AR start shows the canvas before requesting the session; failure restores the map.
+- Cache version bumped to `v2.2.0`.
+
+### Verified
+
+- 12 nodes, 12 edges and 9 readable labels rendered in the SVG.
+- QR image `ENTREE` uploaded → position chip → Salle B12 26 m / 3 steps.
+- Clicking the HALL node recomputes the route to Salle B12 (16 m / 2 steps).
+- Map route highlight has 3 edges; no console errors.
+- Desktop `AR : non disponible` fallback works.
+
 ## [2.1.0] - 2026-11-11
 
 Sprint 2–4: real QR localization, real Dijkstra routing and the first

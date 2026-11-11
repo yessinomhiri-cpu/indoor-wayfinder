@@ -1,6 +1,6 @@
 # Manuel utilisateur — Indoor Wayfinder
 
-**Version :** 2.1.0
+**Version :** 2.2.0
 **Public :** visiteurs, étudiants, candidats, personnel du bâtiment
 
 ## Ce dont vous avez besoin
@@ -18,6 +18,7 @@ navigateur. Vous pouvez l'ajouter à l'écran d'accueil depuis le menu Chrome.
 2. Autorisez l'accès à la **caméra** quand Chrome le demande.
 3. Appuyez sur **SCANNER**.
 4. Cadrez le **QR code le plus proche** dans le viseur.
+   - Sur ordinateur, utilisez **Importer une image QR** à la place de la caméra.
    - Le voyant de position affiche **« Vous êtes ici : … »**.
    - Si le QR est inconnu, vérifiez que vous êtes dans le bon bâtiment.
 5. Appuyez sur **DESTINATION**.
@@ -30,6 +31,13 @@ navigateur. Vous pouvez l'ajouter à l'écran d'accueil depuis le menu Chrome.
     l'itinéraire est recalculé automatiquement.
 11. Appuyez sur **Quitter AR** pour terminer le guidage.
 
+## Mode démonstration sur ordinateur
+
+Le plan interactif est affiché au démarrage. Un clic sur un nœud simule un
+scan QR (libellé **Démo**). Choisissez ensuite une destination : la ligne cyan
+et les distances sont calculées par Dijkstra. Ce mode sert à montrer le
+fonctionnement sans téléphone ; la démonstration réelle utilise la caméra.
+
 ## Comprendre l'écran
 
 | Élément | Signification |
@@ -41,6 +49,8 @@ navigateur. Vous pouvez l'ajouter à l'écran d'accueil depuis le menu Chrome.
 | Bouton **Guidage AR** | Démarre la session `immersive-ar` |
 | Bouton **Quitter AR** | Termine la session AR |
 | Badge **En ligne / Hors ligne** | État de la connexion |
+| Badge **AR : disponible / non disponible** | Support WebXR de l'appareil |
+| Plan + ligne cyan | Graphe du bâtiment et itinéraire calculé |
 
 ## Bon à savoir
 
