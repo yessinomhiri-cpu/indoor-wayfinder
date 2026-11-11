@@ -5,14 +5,15 @@
   Team         : SUP'COM SIA – Indoor Wayfinder
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
-  Modified     : 2026-11-05
-  Version      : 1.2.0 (Sprint 1 audit – accessibility, PWA, AR prep)
+  Modified     : 2026-11-11
+  Version      : 2.1.0 (Sprint 3/4 – QR scan, Dijkstra route, WebXR)
   Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
                  a cohesive dark glassmorphism design system, accessible
                  dialogs with focus trapping, compact header with connectivity
                  status, discrete status toast, floating bottom action bar,
                  scan reticle mockup, and interactive destination selection
-                 bottom sheet. Includes PWA icons and install metadata.
+                 bottom sheet. Includes QR camera scanning, graph-driven
+                 destinations, a real route panel and the AR entry point.
   ==========================================================================
 -->
 <!DOCTYPE html>
@@ -344,8 +345,189 @@
       width: 100%;
       padding: var(--space-md);
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-xs);
       pointer-events: none;
+    }
+
+    /* Current position chip above the action bar */
+    .position-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      max-width: 100%;
+      padding: 0.4rem 0.5rem 0.4rem 0.8rem;
+      background: var(--color-bg-glass);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-full);
+      box-shadow: var(--shadow-sm);
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-xs);
+      pointer-events: auto;
+    }
+
+    .position-chip[hidden] {
+      display: none;
+    }
+
+    .position-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--color-success);
+      box-shadow: 0 0 6px var(--color-success-glow);
+      flex-shrink: 0;
+    }
+
+    .position-chip strong {
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
+
+    .position-rescan {
+      min-height: 28px;
+      padding: 0.2rem 0.6rem;
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-full);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--color-accent-primary);
+      font-family: var(--font-family-system);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .position-rescan:hover {
+      background: rgba(0, 210, 255, 0.14);
+    }
+
+    /* Route panel above the action bar */
+    .route-panel {
+      position: fixed;
+      left: var(--space-md);
+      right: var(--space-md);
+      bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+      z-index: 40;
+      max-height: 55vh;
+      overflow-y: auto;
+      padding: var(--space-md);
+      background: var(--color-bg-glass-modal);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      opacity: 0;
+      transform: translateY(12px);
+      pointer-events: none;
+      transition: opacity var(--transition-normal), transform var(--transition-normal);
+    }
+
+    .route-panel.is-open {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .route-panel[hidden] {
+      display: none;
+    }
+
+    .route-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-sm);
+    }
+
+    .route-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-accent-primary);
+    }
+
+    .route-title {
+      margin-top: 2px;
+      font-size: var(--font-size-md);
+      color: var(--color-text-primary);
+    }
+
+    .route-summary {
+      margin-top: 2px;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+    }
+
+    .route-steps {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2xs);
+      margin: var(--space-sm) 0;
+    }
+
+    .route-step {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      padding: 0.4rem 0.55rem;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.05);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+    }
+
+    .route-step-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(0, 210, 255, 0.14);
+      color: var(--color-accent-primary);
+      font-size: 10px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .route-step-name {
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
+
+    .route-step-distance {
+      margin-left: auto;
+      color: var(--color-accent-primary);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .route-actions {
+      display: flex;
+      gap: var(--space-xs);
+      margin-top: var(--space-sm);
+    }
+
+    .route-actions .action-btn {
+      min-height: 44px;
+    }
+
+    .route-actions #btn-start-ar {
+      flex: 1.4;
+    }
+
+    .route-actions #btn-rescan-route {
+      flex: 1;
+    }
+
+    .route-actions .action-btn[hidden] {
+      display: none;
     }
 
     #bottom-bar {
@@ -924,8 +1106,47 @@
       </div>
     </div>
 
+    <!-- Route panel (real Dijkstra result) -->
+    <section id="route-panel" class="route-panel" aria-labelledby="route-title" hidden>
+      <div class="route-header">
+        <div>
+          <div class="route-eyebrow">Itinéraire</div>
+          <h2 id="route-title" class="route-title">Destination</h2>
+          <p id="route-summary" class="route-summary"></p>
+        </div>
+        <button id="btn-close-route" class="icon-btn" type="button" aria-label="Fermer l'itinéraire">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <ol id="route-steps" class="route-steps"></ol>
+      <div class="route-actions">
+        <button id="btn-start-ar" class="action-btn btn-action-primary" type="button">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2 3 7v10l9 5 9-5V7l-9-5z"></path>
+            <path d="M3 7l9 5 9-5"></path>
+            <path d="M12 12v10"></path>
+          </svg>
+          <span>Guidage AR</span>
+        </button>
+        <button id="btn-rescan-route" class="action-btn btn-action-secondary" type="button">
+          <span>Scanner</span>
+        </button>
+        <button id="btn-stop-ar" class="action-btn btn-action-secondary" type="button" hidden>
+          <span>Quitter AR</span>
+        </button>
+      </div>
+    </section>
+
     <!-- Floating Glass Action Bar -->
     <div class="bottom-bar-container">
+      <div id="position-chip" class="position-chip" hidden>
+        <span class="position-dot" aria-hidden="true"></span>
+        <span>Vous êtes ici : <strong id="position-label">—</strong></span>
+        <button id="btn-rescan" class="position-rescan" type="button">Rescanner</button>
+      </div>
       <nav id="bottom-bar" aria-label="Actions de navigation">
         <!-- SCANNER Button (Primary) -->
         <button id="btn-scan" class="action-btn btn-action-primary" type="button" aria-label="Ouvrir le scanner de repère QR" aria-haspopup="dialog" aria-controls="scan-overlay" aria-expanded="false">
@@ -1025,85 +1246,11 @@
       </div>
     </div>
 
-    <!-- Scrollable Room List -->
+    <!-- Scrollable Room List (rendered from assets/building.json) -->
     <div id="destination-list-scroll" class="destination-list-scroll" role="group" aria-label="Destinations disponibles">
-      <!-- Item: Salle B12 -->
-      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="room-b12" data-destination-name="Salle B12">
-        <div class="dest-icon-badge" aria-hidden="true">💻</div>
-        <div class="dest-details">
-          <div class="dest-name">Salle B12</div>
-          <div class="dest-description">Laboratoire Réseaux & Télécoms</div>
-        </div>
-        <div class="dest-meta">
-          <span class="dest-tag">RDC</span>
-          <span class="dest-distance">25 m</span>
-        </div>
-      </article>
-
-      <!-- Item: Sortie de secours Nord -->
-      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="exit-north" data-destination-name="Sortie de secours Nord">
-        <div class="dest-icon-badge alert-type" aria-hidden="true">🚪</div>
-        <div class="dest-details">
-          <div class="dest-name">Sortie de secours Nord</div>
-          <div class="dest-description">Issue de secours vers le parvis</div>
-        </div>
-        <div class="dest-meta">
-          <span class="dest-tag alert-tag">RDC</span>
-          <span class="dest-distance">15 m</span>
-        </div>
-      </article>
-
-      <!-- Item: Amphi A -->
-      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="amphi-a" data-destination-name="Amphi A">
-        <div class="dest-icon-badge" aria-hidden="true">🎓</div>
-        <div class="dest-details">
-          <div class="dest-name">Amphi A</div>
-          <div class="dest-description">Grand amphithéâtre de conférences</div>
-        </div>
-        <div class="dest-meta">
-          <span class="dest-tag">RDC</span>
-          <span class="dest-distance">40 m</span>
-        </div>
-      </article>
-
-      <!-- Item: Cafétéria Centrale -->
-      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="cafeteria" data-destination-name="Cafétéria Centrale">
-        <div class="dest-icon-badge" aria-hidden="true">☕</div>
-        <div class="dest-details">
-          <div class="dest-name">Cafétéria Centrale</div>
-          <div class="dest-description">Espace détente & distributeurs</div>
-        </div>
-        <div class="dest-meta">
-          <span class="dest-tag">RDC</span>
-          <span class="dest-distance">60 m</span>
-        </div>
-      </article>
-
-      <!-- Item: Accueil & Secrétariat -->
-      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="reception" data-destination-name="Accueil & Secrétariat">
-        <div class="dest-icon-badge" aria-hidden="true">🏢</div>
-        <div class="dest-details">
-          <div class="dest-name">Accueil & Secrétariat</div>
-          <div class="dest-description">Hall principal & point d'information</div>
-        </div>
-        <div class="dest-meta">
-          <span class="dest-tag">RDC</span>
-          <span class="dest-distance">10 m</span>
-        </div>
-      </article>
-
-      <!-- Item: Sanitaires RDC -->
-      <article class="destination-item" role="button" tabindex="0" aria-pressed="false" data-destination-id="restrooms" data-destination-name="Sanitaires RDC">
-        <div class="dest-icon-badge" aria-hidden="true">🚻</div>
-        <div class="dest-details">
-          <div class="dest-name">Sanitaires RDC</div>
-          <div class="dest-description">Toilettes accessibles PMR</div>
-        </div>
-        <div class="dest-meta">
-          <span class="dest-tag">RDC</span>
-          <span class="dest-distance">30 m</span>
-        </div>
-      </article>
+      <p id="destinations-loading" class="no-results-msg" role="status" style="display: block;">
+        Chargement du plan du bâtiment…
+      </p>
 
       <div id="no-destinations-found" class="no-results-msg" role="status">
         Aucune salle ne correspond à votre recherche.

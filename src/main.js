@@ -5,16 +5,17 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-05
- * Version      : 1.2.0 (Sprint 1 audit – accessibility, offline, AR prep)
+ * Modified     : 2026-11-11
+ * Version      : 2.1.0 (Sprint 3/4 – routing + immersive AR)
  * Description  : Main application controller. Initializes the Three.js 3D
  *                scene (rotating cube with visible edges, ground depth grid
  *                with fog, radial ground glow, ambient + directional lights,
  *                responsive viewport handling, prefers-reduced-motion) and
  *                powers the mobile-first UI layer (accessible dialogs,
  *                status toast, network monitor, scan overlay, destination
- *                sheet), with graceful 3D fallback and Service Worker
- *                registration.
+ *                sheet), QR scanning, graph-driven destinations, Dijkstra
+ *                routes, immersive-ar guidance, graceful 3D fallback and
+ *                Service Worker registration.
  * ==========================================================================
  */
 
@@ -24,6 +25,7 @@
 import * as THREE from 'three';
 import { QrScanner } from './scanner.js';
 import { BuildingGraph } from './navigation.js';
+import { ARGuide } from './ar.js';
 
 // ---------------------------------------------------------------------------
 // Application State & Services
@@ -40,6 +42,18 @@ let currentQrNodeId = null;
 
 /** @type {string|null} ID of the target destination chosen by the user */
 let currentDestinationId = null;
+
+/** @type {boolean} True once assets/building.json has been parsed */
+let isGraphReady = false;
+
+/** @type {string[]} Current Dijkstra path from the scanned node to the destination */
+let currentRoutePath = [];
+
+/** @type {number} Current route distance in metres */
+let currentRouteDistance = 0;
+
+/** @type {Object|null} Immersive AR controller (set during init) */
+let arGuide = null;
 
 /** @type {number|null} Timeout identifier for auto-dismissing status toast */
 let toastDismissTimerId = null;
@@ -110,6 +124,42 @@ const destinationListScroll = document.getElementById('destination-list-scroll')
 
 /** @type {HTMLDivElement} Empty search message */
 const noDestinationsFoundMsg = document.getElementById('no-destinations-found');
+
+/** @type {HTMLParagraphElement} Loading message inside the destination sheet */
+const destinationsLoadingElement = document.getElementById('destinations-loading');
+
+/** @type {HTMLDivElement} Current-position chip above the action bar */
+const positionChipElement = document.getElementById('position-chip');
+
+/** @type {HTMLSpanElement} Name of the current graph node */
+const positionLabelElement = document.getElementById('position-label');
+
+/** @type {HTMLButtonElement} Re-scan button inside the position chip */
+const rescanButton = document.getElementById('btn-rescan');
+
+/** @type {HTMLElement} Floating route panel */
+const routePanelElement = document.getElementById('route-panel');
+
+/** @type {HTMLHeadingElement} Destination name inside the route panel */
+const routeTitleElement = document.getElementById('route-title');
+
+/** @type {HTMLParagraphElement} Distance and step count inside the route panel */
+const routeSummaryElement = document.getElementById('route-summary');
+
+/** @type {HTMLOListElement} Ordered route steps */
+const routeStepsElement = document.getElementById('route-steps');
+
+/** @type {HTMLButtonElement} Starts the immersive-ar guide */
+const startArButton = document.getElementById('btn-start-ar');
+
+/** @type {HTMLButtonElement} Closes the route panel */
+const closeRouteButton = document.getElementById('btn-close-route');
+
+/** @type {HTMLButtonElement} Re-scans a QR code from the route panel */
+const rescanRouteButton = document.getElementById('btn-rescan-route');
+
+/** @type {HTMLButtonElement} Ends the immersive-ar session */
+const stopArButton = document.getElementById('btn-stop-ar');
 
 // ---------------------------------------------------------------------------
 // Three.js 3D Scene Initialization
@@ -447,10 +497,19 @@ function startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh
    * animate (inner)
    * ---------------
    * Single frame callback for the Three.js animation loop.
+   *
+   * @param {number} time – Elapsed time in milliseconds.
+   * @param {XRFrame} frame – Current WebXR frame (undefined outside AR).
    */
-  function animate() {
-    // Keep the last frame on screen while an overlay is open.
-    if (isSceneCoveredByUi()) {
+  function animate(time, frame) {
+    const arActive = Boolean(arGuide && arGuide.isActive);
+
+    if (arActive && frame) {
+      arGuide.update(frame);
+    }
+
+    // Keep the last frame on screen while a UI overlay is open (not in AR).
+    if (!arActive && isSceneCoveredByUi()) {
       return;
     }
 
@@ -610,11 +669,18 @@ function handleQrDetection(rawQrCode) {
   const node = buildingGraph.getNode(scannedKey);
   if (node) {
     currentQrNodeId = scannedKey;
+    updatePositionChip();
+    renderDestinationList();
+    if (currentDestinationId) {
+      updateRouteForCurrentDestination();
+    }
     if ('vibrate' in navigator) {
       try { navigator.vibrate([100, 50, 100]); } catch (e) {}
     }
     showStatusToast(`📍 Vous êtes ici : ${node.name}`, 6000);
     closeScanOverlay();
+  } else if (!isGraphReady) {
+    showStatusToast('Plan du bâtiment en cours de chargement…', 3000);
   } else {
     showStatusToast(`⚠️ QR code inconnu : ${scannedKey}`, 3000);
   }
@@ -727,6 +793,141 @@ function closeDestinationSheet() {
 }
 
 /**
+ * Presentation metadata for graph nodes that can be chosen as destinations.
+ * Distances are always computed from the graph; nothing here is a distance.
+ */
+const DESTINATION_VISUALS = {
+  ENTREE: { icon: '🚪', description: 'Entrée / sortie principale', tag: 'Sortie', alert: true },
+  HALL: { icon: '🏛️', description: 'Hall principal et accueil', tag: 'RDC' },
+  SALLE_B12: { icon: '💻', description: 'Laboratoire Réseaux & Télécoms', tag: 'RDC' },
+  SALLE_B14: { icon: '📚', description: 'Salle de cours', tag: 'RDC' },
+  SALLE_B15: { icon: '🧪', description: 'Salle de travaux pratiques', tag: 'RDC' },
+  LAB_INFO: { icon: '🖥️', description: 'Laboratoire informatique', tag: 'RDC' },
+  ADMIN: { icon: '🏢', description: 'Administration', tag: 'RDC' },
+  BIBLIO: { icon: '📖', description: 'Bibliothèque', tag: 'RDC' },
+  AMPHI_A: { icon: '🎓', description: 'Amphithéâtre A', tag: 'RDC' }
+};
+
+/**
+ * getDestinationDistance
+ * ----------------------
+ * Returns the Dijkstra distance from the current QR node, or null when the
+ * position is unknown or no route exists.
+ *
+ * @param {string} destinationId – Target graph node.
+ * @returns {number|null} Distance in metres.
+ */
+function getDestinationDistance(destinationId) {
+  if (!isGraphReady || !currentQrNodeId) {
+    return null;
+  }
+  if (currentQrNodeId === destinationId) {
+    return 0;
+  }
+  const path = buildingGraph.findShortestPath(currentQrNodeId, destinationId);
+  if (path.length < 2) return null;
+  return buildingGraph.getPathDistance(path);
+}
+
+/**
+ * createDestinationItem
+ * ---------------------
+ * Builds one destination button from graph data + presentation metadata.
+ *
+ * @param {string} destinationId – Graph node ID.
+ * @param {{name:string}} node – Graph node.
+ * @param {Object} visuals – Icon, description and tag.
+ * @returns {HTMLElement} Destination button element.
+ */
+function createDestinationItem(destinationId, node, visuals) {
+  const item = document.createElement('article');
+  item.className = 'destination-item';
+  item.setAttribute('role', 'button');
+  item.setAttribute('tabindex', '0');
+  item.setAttribute('aria-pressed', String(currentDestinationId === destinationId));
+  item.dataset.destinationId = destinationId;
+  item.dataset.destinationName = node.name;
+
+  const icon = document.createElement('div');
+  icon.className = `dest-icon-badge${visuals.alert ? ' alert-type' : ''}`;
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = visuals.icon;
+
+  const details = document.createElement('div');
+  details.className = 'dest-details';
+
+  const name = document.createElement('div');
+  name.className = 'dest-name';
+  name.textContent = node.name;
+
+  const description = document.createElement('div');
+  description.className = 'dest-description';
+  description.textContent = visuals.description;
+
+  details.append(name, description);
+
+  const meta = document.createElement('div');
+  meta.className = 'dest-meta';
+
+  const tag = document.createElement('span');
+  tag.className = `dest-tag${visuals.alert ? ' alert-tag' : ''}`;
+  tag.textContent = visuals.tag;
+
+  const distance = document.createElement('span');
+  distance.className = 'dest-distance';
+  const distanceMetres = getDestinationDistance(destinationId);
+  distance.textContent = distanceMetres === null ? '—' : `${Math.round(distanceMetres)} m`;
+
+  meta.append(tag, distance);
+  item.append(icon, details, meta);
+
+  return item;
+}
+
+/**
+ * renderDestinationList
+ * ---------------------
+ * Replaces the hard-coded room list with destinations from building.json.
+ */
+function renderDestinationList() {
+  if (!destinationListScroll) return;
+
+  const query = destinationSearchInput ? destinationSearchInput.value : '';
+  destinationListScroll.querySelectorAll('.destination-item').forEach((item) => item.remove());
+
+  if (!isGraphReady) {
+    if (destinationsLoadingElement) {
+      destinationsLoadingElement.style.display = 'block';
+      destinationsLoadingElement.textContent = 'Chargement du plan du bâtiment…';
+    }
+    if (noDestinationsFoundMsg) noDestinationsFoundMsg.style.display = 'none';
+    return;
+  }
+
+  if (destinationsLoadingElement) destinationsLoadingElement.style.display = 'none';
+
+  let renderedCount = 0;
+  for (const [destinationId, visuals] of Object.entries(DESTINATION_VISUALS)) {
+    const node = buildingGraph.getNode(destinationId);
+    if (!node) continue;
+
+    const item = createDestinationItem(destinationId, node, visuals);
+    if (noDestinationsFoundMsg) {
+      destinationListScroll.insertBefore(item, noDestinationsFoundMsg);
+    } else {
+      destinationListScroll.appendChild(item);
+    }
+    renderedCount++;
+  }
+
+  filterDestinations(query);
+
+  if (noDestinationsFoundMsg) {
+    noDestinationsFoundMsg.style.display = renderedCount === 0 ? 'block' : 'none';
+  }
+}
+
+/**
  * filterDestinations
  * ------------------
  * Filters the list of destination rooms based on user query string.
@@ -734,6 +935,11 @@ function closeDestinationSheet() {
  * @param {string} query – User search string.
  */
 function filterDestinations(query) {
+  if (!isGraphReady) {
+    if (noDestinationsFoundMsg) noDestinationsFoundMsg.style.display = 'none';
+    return;
+  }
+
   const normalizedQuery = (query || '').trim().toLowerCase();
   const items = destinationListScroll ? destinationListScroll.querySelectorAll('.destination-item') : [];
   let visibleCount = 0;
@@ -747,6 +953,191 @@ function filterDestinations(query) {
 
   if (noDestinationsFoundMsg) {
     noDestinationsFoundMsg.style.display = visibleCount === 0 ? 'block' : 'none';
+  }
+}
+
+/**
+ * updatePositionChip
+ * ------------------
+ * Shows the current graph node above the action bar.
+ */
+function updatePositionChip() {
+  const node = currentQrNodeId ? buildingGraph.getNode(currentQrNodeId) : null;
+  if (positionChipElement) positionChipElement.hidden = !node;
+  if (positionLabelElement) positionLabelElement.textContent = node ? node.name : '—';
+}
+
+/**
+ * showRoutePanel
+ * --------------
+ * Reveals the floating route panel with its entry transition.
+ */
+function showRoutePanel() {
+  if (!routePanelElement) return;
+  routePanelElement.hidden = false;
+  requestAnimationFrame(() => routePanelElement.classList.add('is-open'));
+}
+
+/**
+ * hideRoutePanel
+ * --------------
+ * Hides the route panel and clears the current route.
+ */
+function hideRoutePanel() {
+  if (!routePanelElement) return;
+  routePanelElement.classList.remove('is-open');
+  routePanelElement.hidden = true;
+}
+
+/**
+ * addRouteStep
+ * ------------
+ * Appends one readable leg to the route list.
+ *
+ * @param {number|null} index – Step number, or null for the departure row.
+ * @param {string} name – Node display name.
+ * @param {number|null} distance – Leg distance in metres.
+ */
+function addRouteStep(index, name, distance) {
+  if (!routeStepsElement) return;
+
+  const item = document.createElement('li');
+  item.className = 'route-step';
+
+  const badge = document.createElement('span');
+  badge.className = 'route-step-index';
+  badge.textContent = index === null ? '•' : String(index);
+
+  const label = document.createElement('span');
+  label.className = 'route-step-name';
+  label.textContent = name;
+
+  item.append(badge, label);
+
+  if (distance !== null) {
+    const distanceLabel = document.createElement('span');
+    distanceLabel.className = 'route-step-distance';
+    distanceLabel.textContent = `${Math.round(distance)} m`;
+    item.appendChild(distanceLabel);
+  }
+
+  routeStepsElement.appendChild(item);
+}
+
+/**
+ * updateRouteForCurrentDestination
+ * --------------------------------
+ * Recomputes Dijkstra from the current QR node and renders the route panel.
+ * This is the only place where route distances are produced.
+ */
+function updateRouteForCurrentDestination() {
+  if (!routeTitleElement || !routeSummaryElement || !routeStepsElement) return;
+
+  if (!currentDestinationId) {
+    hideRoutePanel();
+    return;
+  }
+
+  const destination = buildingGraph.getNode(currentDestinationId);
+  if (!destination) {
+    hideRoutePanel();
+    return;
+  }
+
+  routeTitleElement.textContent = destination.name;
+  routeStepsElement.replaceChildren();
+  currentRoutePath = [];
+  currentRouteDistance = 0;
+  if (startArButton) startArButton.disabled = true;
+
+  if (!isGraphReady) {
+    routeSummaryElement.textContent = 'Chargement du plan du bâtiment…';
+    showRoutePanel();
+    return;
+  }
+
+  if (!currentQrNodeId) {
+    routeSummaryElement.textContent = 'Scannez un QR code pour calculer l’itinéraire.';
+    showRoutePanel();
+    return;
+  }
+
+  const path = buildingGraph.findShortestPath(currentQrNodeId, currentDestinationId);
+  if (path.length === 1) {
+    routeSummaryElement.textContent = 'Vous êtes déjà sur place.';
+    showRoutePanel();
+    return;
+  }
+  if (path.length < 2) {
+    routeSummaryElement.textContent = 'Aucun itinéraire disponible depuis cette position.';
+    showRoutePanel();
+    return;
+  }
+
+  currentRoutePath = path;
+  currentRouteDistance = buildingGraph.getPathDistance(path);
+
+  const stepCount = path.length - 1;
+  routeSummaryElement.textContent =
+    `${Math.round(currentRouteDistance)} m · ${stepCount} étape${stepCount > 1 ? 's' : ''}`;
+
+  const startNode = buildingGraph.getNode(path[0]);
+  addRouteStep(null, `Départ : ${startNode ? startNode.name : path[0]}`, null);
+
+  for (let index = 1; index < path.length; index++) {
+    const node = buildingGraph.getNode(path[index]);
+    const legDistance = buildingGraph.getPathDistance([path[index - 1], path[index]]);
+    addRouteStep(index, node ? node.name : path[index], legDistance);
+  }
+
+  if (startArButton) startArButton.disabled = false;
+  showRoutePanel();
+}
+
+/**
+ * updateARControls
+ * ----------------
+ * Swaps the start/stop AR buttons when the session state changes.
+ *
+ * @param {boolean} isActive – True while immersive-ar is running.
+ */
+function updateARControls(isActive) {
+  if (startArButton) startArButton.hidden = isActive;
+  if (stopArButton) stopArButton.hidden = !isActive;
+}
+
+/**
+ * startARGuide
+ * ------------
+ * Starts the immersive-ar arrow for the current route, or stops it.
+ */
+async function startARGuide() {
+  if (!arGuide) {
+    showStatusToast('Guidage AR indisponible sur ce navigateur', 4000);
+    return;
+  }
+  if (arGuide.isActive) {
+    arGuide.stop();
+    return;
+  }
+  if (!currentRoutePath || currentRoutePath.length < 2) {
+    showStatusToast('Scannez un QR code et choisissez une destination', 4000);
+    return;
+  }
+
+  const supported = await arGuide.isSupported();
+  if (!supported) {
+    showStatusToast('WebXR AR non supporté sur cet appareil', 5000);
+    return;
+  }
+
+  showStatusToast('Démarrage de la session AR…', 3000);
+
+  try {
+    await arGuide.start(currentRoutePath);
+  } catch (error) {
+    console.error('[main] AR session failed:', error);
+    showStatusToast('Impossible de démarrer la session AR', 4500);
   }
 }
 
@@ -771,6 +1162,7 @@ function selectDestination(destinationId, destinationName) {
 
   showStatusToast(`Destination : ${destinationName}`, 4000);
   closeDestinationSheet();
+  updateRouteForCurrentDestination();
 }
 
 /**
@@ -905,13 +1297,27 @@ function initUIEventListeners() {
     });
   }
 
-  // 6. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
+  // 6. Route panel and current-position actions
+  if (rescanButton) rescanButton.addEventListener('click', openScanOverlay);
+  if (rescanRouteButton) rescanRouteButton.addEventListener('click', openScanOverlay);
+  if (closeRouteButton) {
+    closeRouteButton.addEventListener('click', () => {
+      hideRoutePanel();
+      if (destinationTriggerButton) destinationTriggerButton.focus();
+    });
+  }
+  if (startArButton) startArButton.addEventListener('click', startARGuide);
+  if (stopArButton) stopArButton.addEventListener('click', () => arGuide?.stop());
+
+  // 7. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
         closeScanOverlay();
       } else if (destinationSheetElement && destinationSheetElement.classList.contains('is-open')) {
         closeDestinationSheet();
+      } else if (routePanelElement && routePanelElement.classList.contains('is-open')) {
+        hideRoutePanel();
       }
     } else if (event.key === 'Tab') {
       if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
@@ -922,7 +1328,7 @@ function initUIEventListeners() {
     }
   });
 
-  // 7. Online/Offline events
+  // 8. Online/Offline events
   window.addEventListener('online', updateNetworkStatus);
   window.addEventListener('offline', updateNetworkStatus);
   updateNetworkStatus();
@@ -963,10 +1369,18 @@ function init() {
   qrScanner.onDetect((code) => handleQrDetection(code));
   buildingGraph.loadGraph('assets/building.json')
     .then(() => {
+      isGraphReady = true;
+      renderDestinationList();
+      updatePositionChip();
+      if (currentDestinationId) updateRouteForCurrentDestination();
       console.log('[Indoor Wayfinder] Plan du bâtiment chargé');
     })
     .catch((err) => {
       console.warn('[Indoor Wayfinder] Erreur chargement plan :', err);
+      if (destinationsLoadingElement) {
+        destinationsLoadingElement.style.display = 'block';
+        destinationsLoadingElement.textContent = 'Plan du bâtiment indisponible.';
+      }
     });
 
   // 2. Bind UI first so the shell remains usable if WebGL is unavailable
@@ -986,9 +1400,21 @@ function init() {
     scene.add(groundShadowMesh);
 
     createLighting(scene);
-    createGridHelper(scene);
+    const gridHelper = createGridHelper(scene);
 
-    // 4. React to viewport resizing & orientation changes
+    // 4. Prepare the immersive-ar controller (session starts on demand)
+    arGuide = new ARGuide({
+      renderer,
+      scene,
+      camera,
+      arrowFactory: createArrow,
+      demoObjects: [cubeGroup, groundShadowMesh, gridHelper],
+      getDirection: (fromId, toId) => buildingGraph.getDirectionVector(fromId, toId),
+      onStatus: (message) => showStatusToast(message, 5000),
+      onSessionState: updateARControls
+    });
+
+    // 5. React to viewport resizing & orientation changes
     window.addEventListener('resize', () => {
       handleWindowResize(camera, renderer);
     });
@@ -1005,13 +1431,13 @@ function init() {
       showRenderFallback('Le contexte 3D a été perdu. Rechargez la page pour réessayer.');
     });
 
-    // 5. Start 3D animation loop
+    // 6. Start 3D animation loop
     startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh);
 
-    // 6. Display initial discrete status toast
+    // 7. Display initial discrete status toast
     showStatusToast('Scène 3D initialisée ✓', 4000);
 
-    console.log('[Indoor Wayfinder] v1.2.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    console.log('[Indoor Wayfinder] v2.1.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
   } catch (error) {
     console.error('[Indoor Wayfinder] 3D initialization failed:', error);
     showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
