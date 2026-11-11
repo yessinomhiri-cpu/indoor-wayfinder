@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-04
- * Version      : 0.1.0 (Week 1 – QR code reader)
+ * Modified     : 2026-11-11
+ * Version      : 2.1.0 (Sprint 2/3 – QR camera reader)
  * Description  : Reads QR codes from the device camera. Uses the native
  *                BarcodeDetector API when available (Chrome Android 83+),
  *                and falls back to the jsQR library loaded from jsDelivr.
@@ -103,6 +103,18 @@ export class QrScanner {
   /** @type {number} Minimum ms between two identical detections */
   #cooldownMs = 2000;
 
+  /** @type {Promise<void>|null} Backend probe, awaited before start */
+  #backendReady = null;
+
+  /** @type {boolean} True while one async detection is in flight */
+  #isDetecting = false;
+
+  /** @type {number} Timestamp of the last detection attempt */
+  #lastDetectionAt = 0;
+
+  /** @type {number} Generation token used to cancel a pending start */
+  #startGeneration = 0;
+
   // -----------------------------------------------------------------------
   // Constructor
   // -----------------------------------------------------------------------
@@ -114,7 +126,7 @@ export class QrScanner {
    * appropriate scanning back-end.
    */
   constructor() {
-    this.#detectBackend();
+    this.#backendReady = this.#detectBackend();
   }
 
   // -----------------------------------------------------------------------
@@ -178,20 +190,31 @@ export class QrScanner {
   async start(videoElement, canvasElement) {
     if (this.#isScanning) return; // already running
 
+    const generation = ++this.#startGeneration;
+
     this.#videoElement = videoElement;
     this.#canvasElement = canvasElement;
     this.#canvasContext = canvasElement.getContext('2d', {
       willReadFrequently: true
     });
+    if (!this.#canvasContext) {
+      throw new Error('Contexte canvas 2D indisponible');
+    }
+
+    // Wait for the BarcodeDetector probe before choosing a backend
+    await this.#backendReady;
+    if (generation !== this.#startGeneration) return;
 
     // Load jsQR if we need the fallback
     if (this.#useJsQrFallback) {
       await loadJsQR();
     }
+    if (generation !== this.#startGeneration) return;
 
     // Request camera access (prefer rear camera)
+    let stream = null;
     try {
-      this.#mediaStream = await navigator.mediaDevices.getUserMedia({
+      stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment',  // rear camera on mobile
           width: { ideal: 1280 },
@@ -204,16 +227,34 @@ export class QrScanner {
       throw new Error('Accès à la caméra refusé');
     }
 
+    // The overlay may have been closed while the permission prompt was open
+    if (generation !== this.#startGeneration) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    this.#mediaStream = stream;
+
     // Connect stream to video element
-    this.#videoElement.srcObject = this.#mediaStream;
-    await this.#videoElement.play();
+    try {
+      this.#videoElement.srcObject = stream;
+      await this.#videoElement.play();
+    } catch (error) {
+      console.error('[scanner] Video playback failed:', error);
+      this.#releaseMediaStream();
+      throw new Error('Lecture de la caméra impossible');
+    }
+
+    if (generation !== this.#startGeneration) {
+      this.#releaseMediaStream();
+      return;
+    }
 
     // Start scan loop
     this.#isScanning = true;
     this.#lastDetectedValue = null;
-    this.#scanLoop();
-
+    this.#lastDetectionAt = 0;
     console.log('[scanner] Scanning started');
+    this.#scanLoop();
   }
 
   /**
@@ -222,6 +263,7 @@ export class QrScanner {
    * Stops the scan loop and releases the camera.
    */
   stop() {
+    this.#startGeneration++;
     this.#isScanning = false;
 
     // Cancel animation frame
@@ -230,18 +272,24 @@ export class QrScanner {
       this.#animationFrameId = null;
     }
 
-    // Stop all camera tracks
+    this.#releaseMediaStream();
+
+    console.log('[scanner] Scanning stopped');
+  }
+
+  /**
+   * #releaseMediaStream
+   * -------------------
+   * Stops every camera track and detaches the video source.
+   */
+  #releaseMediaStream() {
     if (this.#mediaStream) {
       this.#mediaStream.getTracks().forEach((track) => track.stop());
       this.#mediaStream = null;
     }
-
-    // Disconnect video
     if (this.#videoElement) {
       this.#videoElement.srcObject = null;
     }
-
-    console.log('[scanner] Scanning stopped');
   }
 
   /**
@@ -273,15 +321,26 @@ export class QrScanner {
       return;
     }
 
-    // Draw the current video frame onto the hidden canvas
     const videoWidth = this.#videoElement.videoWidth;
     const videoHeight = this.#videoElement.videoHeight;
+    if (!videoWidth || !videoHeight) return;
 
-    this.#canvasElement.width = videoWidth;
-    this.#canvasElement.height = videoHeight;
+    // Detect at ~6-7 fps, not on every display frame
+    const now = performance.now();
+    if (this.#isDetecting || now - this.#lastDetectionAt < 150) {
+      return;
+    }
+    this.#lastDetectionAt = now;
+
+    // Draw the current video frame onto the hidden canvas
+    if (this.#canvasElement.width !== videoWidth) {
+      this.#canvasElement.width = videoWidth;
+    }
+    if (this.#canvasElement.height !== videoHeight) {
+      this.#canvasElement.height = videoHeight;
+    }
     this.#canvasContext.drawImage(this.#videoElement, 0, 0);
 
-    // Attempt detection (async — result handled on next frame if needed)
     this.#detectQrCode();
   }
 
@@ -292,6 +351,9 @@ export class QrScanner {
    * Uses BarcodeDetector if available, otherwise jsQR.
    */
   async #detectQrCode() {
+    if (this.#isDetecting) return;
+    this.#isDetecting = true;
+
     let detectedValue = null;
 
     try {
@@ -322,8 +384,12 @@ export class QrScanner {
       }
     } catch (error) {
       // Detection errors are non-fatal — just skip this frame
-      return;
+    } finally {
+      this.#isDetecting = false;
     }
+
+    // If the overlay was closed while detection was in flight, ignore the result
+    if (!this.#isScanning) return;
 
     // If a QR code was found, check cooldown and notify
     if (detectedValue) {

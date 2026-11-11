@@ -7,12 +7,13 @@
 | | |
 |---|---|
 | **Team** | Yassine Mhiri · Oussema Harrabi · Amin Jarbaoui |
-| **Supervisor** | Mohamed Bécha Kaaniche |
+| **Supervisor** | Mohamed-Becha Kaâniche |
 | **Brief** | Cahier des charges v1.0 — 24 October 2026 |
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
-| **App version** | `v1.2.0` (Sprint 1 audit) |
-| **Sprint** | 1 of 6 — PWA shell + 3D scene + hardening |
-| **Last updated** | 2026-11-05 |
+| **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Design notebook](docs/design-notebook.md) |
+| **App version** | `v2.1.0` (Sprint 3/4) |
+| **Sprint** | Sprints 1–3 complete; Sprint 4 code ready |
+| **Last updated** | 2026-11-11 |
 
 ---
 
@@ -128,98 +129,106 @@ sequenceDiagram
 
 ## Screenshots
 
-Captured on **2026-11-05** from the current `main` build at a 390 × 844 mobile viewport.
+Captured on **2026-11-11** from v2.1.0 at a 390 × 844 mobile viewport.
 
-| Home — 3D scene | Scanner overlay |
+| Home — 3D scene | Scanner — live camera |
 |:---:|:---:|
-| <img src="docs/screenshots/01-home.png" width="280" alt="Home screen with rotating 3D cube"><br>**Home** — Three.js placeholder scene | <img src="docs/screenshots/02-scan.png" width="280" alt="Scan overlay mockup"><br>**Scanner** — mockup, no camera yet |
-| <img src="docs/screenshots/03-destinations.png" width="280" alt="Destination bottom sheet"><br>**Destinations** — 6 hard-coded rooms | <img src="docs/screenshots/04-search.png" width="280" alt="Destination search filtered to Amphi A"><br>**Search** — live filtering on mockup data |
+| <img src="docs/screenshots/01-home.png" width="280" alt="Home screen with Three.js scene"><br>**Home** — Three.js scene | <img src="docs/screenshots/02-scan.png" width="280" alt="Live camera scanner overlay"><br>**Scanner** — camera + QR overlay |
+| <img src="docs/screenshots/03-destinations.png" width="280" alt="Graph-generated destination list with real distances"><br>**Destinations** — 9 graph nodes, real distances | <img src="docs/screenshots/04-search.png" width="280" alt="Destination search filtered to Amphi A"><br>**Search** — live filtering |
 
-The scan and destination flows are **UI mockups**: no camera, no QR decoding, no graph and no routing yet. They show what Sprints 2–5 will make real.
+**Real Dijkstra route, captured from the app:**
+
+<img src="docs/screenshots/05-route.png" width="320" alt="Route panel showing Amphi A, 54 metres and five steps">
+
+The scanner screenshot uses a simulated camera feed in headless Chrome; on a
+phone it shows the real camera. The route distances are computed from
+`assets/building.json`, not hard-coded.
 
 ---
 
 ## What is already built
 
-Sprint 1 delivered a working **PWA shell and a Three.js 3D scene**, hardened in **v1.2.0** for accessibility, failure handling and offline use.
+Sprints 1–3 are complete; the Sprint 4 WebXR code is ready for device testing
+(**v2.1.0**).
 
 ### 1. Mobile-first PWA shell — `index.html`
 
-- French UI, dark glassmorphism design system built with CSS custom properties.
-- Responsive layout with safe-area handling, `100dvh` and visual-viewport support.
-- Header with the app brand and a live **online/offline badge**.
-- Discreet auto-dismissing **status toast** (informational live region).
-- Floating bottom action bar with two actions: **SCANNER** and **DESTINATION**.
-- **Scan overlay mockup**: viewfinder corners, animated laser sweep line, guidance text.
-- **Destination bottom sheet**: six hard-coded rooms, live text search, swipe-down-to-dismiss, Escape/backdrop close, keyboard support.
-- Accessible dialogs: `inert` background, focus trap, `aria-expanded` triggers, Escape to close, and focus restoration.
-- Pinch zoom enabled; muted text contrast raised above WCAG AA.
-- PWA icons, manifest metadata and an offline Service Worker.
+- French UI, dark glassmorphism design system, safe areas and `100dvh`.
+- Accessible dialogs: `inert` background, focus trap, `aria-expanded`, Escape,
+  focus restoration; pinch zoom enabled; AA muted contrast.
+- PWA icons, manifest and offline Service Worker.
+- Running status toast, online/offline badge and persistent position chip.
 
-### 2. Three.js scene — `src/main.js`
+### 2. Real QR scanner — `src/scanner.js`
 
-- Three.js **r160** loaded from **jsDelivr** through an ES module import map (version pinned).
-- Dark scene with exponential fog and a ground grid that fades into the horizon.
-- Rotating **cube with visible edges** — a deliberate Week 1 placeholder for the navigation arrow.
-- Procedural radial ground glow, ambient + directional lighting (2 lights, mobile-friendly).
-- Render loop driven by `renderer.setAnimationLoop`, disabled under `prefers-reduced-motion`; rendering pauses while a modal covers the scene.
-- Resize, orientation-change and `visualViewport` handling; pixel ratio capped at 2.
-- `createArrow()` is written but **not called**: it is now a flat, 1 m, floor-anchored arrow pointing along +Z, ready for the WebXR sprint.
-- Graceful degradation: WebGL failure, CDN failure and context loss surface a persistent banner instead of killing the UI.
-- Application state placeholders: `currentQrNodeId`, `currentDestinationId`.
+- Rear camera via `getUserMedia`, native `BarcodeDetector`, jsQR fallback.
+- One detection every 150 ms, 2 s cooldown per value, no overlapping decodes.
+- Generation token cancels a pending camera start if the overlay closes during
+  the permission prompt; camera tracks are always released.
+- QR payload = graph node ID (`ENTREE`, `SALLE_B12`, …).
 
-### 3. PWA and offline — `manifest.json`, `sw.js`, `assets/icons/`
+### 3. Building graph and real routing — `navigation.js`, `main.js`
 
-- Four icon variants: 192/512 `any` and 192/512 `maskable`, plus a 180 Apple touch icon.
-- Service Worker precaches the shell, icons and pinned Three.js module.
-- Navigations are network-first with a cached index fallback; static assets are cache-first.
-- Offline reload verified after the first controlled load.
+- `assets/building.json`: 12 nodes, 12 weighted edges, one floor.
+- Adjacency list + Dijkstra + `AvoidStairsStrategy` extension point.
+- Destination sheet generated from the graph; every distance is computed.
+- Route panel with total distance, ordered legs and per-leg distances.
+- Position updates on each QR scan and recomputes the route immediately.
+- Nine Node tests cover nodes, edges, paths, distances and reachability.
 
-### 4. What was verified (2026-11-05)
+### 4. WebXR augmented reality — `src/ar.js`
 
-- Page loads with no JavaScript errors; Three.js r160 renders.
-- Closed dialogs are skipped by Tab; Tab stays trapped inside open dialogs; Escape restores focus.
-- Destination search filters the list; selection is exposed with `aria-pressed`.
-- Forced WebGL failure shows the fallback banner while the UI remains usable.
-- CDN failure shows the fallback banner.
-- Offline reload is served from the Service Worker with the canvas intact.
-- Manifest is valid, all icons return 200, and no icon requests fail.
+- Support probe with `navigator.xr.isSessionSupported('immersive-ar')`.
+- `requestSession` with `hit-test`, optional `anchors` and `dom-overlay`.
+- `renderer.xr`, `local-floor`, transparent canvas, demo scene hidden.
+- Reticle on the detected floor; tap to place the flat 1 m arrow.
+- `XRAnchor` keeps the arrow stable; graceful fallback when unsupported.
+- Start/stop AR controls and session cleanup.
+
+### 5. What was verified (2026-11-11)
+
+- Dijkstra: 9/9 Node tests pass; Salle B12 = 26 m, Amphi A = 54 m.
+- Fake-camera integration: `ENTREE` QR → position chip → 9 graph destinations
+  with real distances → Salle B12 route 26 m · 3 steps.
+- AR unsupported path: clear message, no crash.
+- Closed dialogs skipped by Tab, focus trapped, camera released on close.
+- WebGL/CDN failure fallbacks, offline reload and manifest/icons still pass.
 
 ---
 
 ## What is not built yet
 
-This is the honest state of the repository as of **2026-11-05**:
+Honest state as of **2026-11-11**:
 
 | Area | Status | Notes |
 |---|---|---|
-| PWA shell and design system | ✅ Done | `index.html` |
-| Three.js scene | ✅ Done | Rotating cube placeholder |
-| Online/offline indicator | ✅ Done | `navigator.onLine` |
-| Scan overlay | 🟡 Mockup | No camera, no QR decoding |
-| Destination sheet and search | 🟡 Mockup | Hard-coded rooms; no graph, no real distances |
-| QR localization | ⬜ Not started | `src/scanner.js` does not exist |
-| Building graph + shortest path | ⬜ Not started | `src/navigation.js` and `assets/building.json` do not exist |
-| WebXR `immersive-ar` + hit testing | ⬜ Not started | No XR session yet |
-| 3D arrow in AR | 🟡 Reserved | `createArrow()` is floor-ready but never called; no XR session |
-| Route updates after each scan | ⬜ Not started | — |
-| Arrival vibration / wake lock | ⬜ Not started | Planned Sprint 5 |
-| Service Worker / offline | ✅ Done | `sw.js`; offline reload verified |
-| PWA installability | ✅ Ready | Manifest + icons + Service Worker; HTTPS/localhost |
-| Accessibility & failure handling | ✅ Done | Inert dialogs, focus trap, zoom, contrast, WebGL/CDN fallback |
-| GitHub Pages deployment | ⬜ Not enabled | `https://yessinomhiri-cpu.github.io/indoor-wayfinder/` returns 404 |
-| Technical documentation / user manual | ⬜ Not started | `/docs` does not exist; README and CHANGELOG are current |
-| Demo video | ⬜ Not started | Deliverable for Sprint 6 |
-| Tests | ⬜ Not started | No test suite; manual smoke tests only |
+| QR scanner | ✅ Code ready | Fake-camera test passes; Android device test pending |
+| Building graph + Dijkstra | ✅ Done | 12 nodes / 12 edges, 9 tests |
+| Data-driven destinations | ✅ Done | No hard-coded rooms or fake distances |
+| Route panel + recalculation | ✅ Done | Updates on every QR scan |
+| Persistent position | ✅ Done | Chip above the action bar |
+| WebXR `immersive-ar` | 🟡 Code ready | Hit test, anchor, arrow; real ARCore test pending |
+| AR bearing calibration | ⬜ Sprint 5 | Arrow currently follows the phone's forward direction |
+| Exit/re-enter AR to rescan | ⬜ Sprint 5 | UX flow to design |
+| Arrival vibration / wake lock | ⬜ Sprint 5 | — |
+| Service Worker / offline | ✅ Done | Versioned cache `v2.1.0` |
+| PWA installability | ✅ Ready | Manifest + icons + Service Worker |
+| Documentation | ✅ Done | Technical, user manual, design notebook |
+| Attribution | ✅ Done | `ATTRIBUTION.md` updated 2026-11-11 |
+| GitHub Pages deployment | ⬜ Not enabled | URL still returns 404 |
+| Android/ARCore test | ⬜ Not documented | Required before the demo |
+| Demo video | ⬜ Not started | Sprint 6 deliverable |
+| Automated tests | ✅ Node | `node --test scripts/test-navigation.mjs` |
 
 ### Known issues
 
-1. **The destination distances are fake.** Values such as "25 m" are static HTML, not computed from a graph.
-2. **The scanner is a visual mockup.** There is no `getUserMedia` call and no barcode decoding yet.
-3. **The 3D cube is not the navigation arrow.** It is the Week 1 proof that Three.js loads and renders.
-4. **No HTTPS demo yet.** GitHub Pages is not enabled, so camera and WebXR cannot be tested from a public URL.
-5. **No Android/ARCore test is documented.** The repository contains no test notes or device results; only desktop rendering and local offline mode have been checked.
-6. **PWA install has not been exercised on a real phone.** The criteria are met locally, but the Pages deployment and launcher install are still pending.
+1. **No real Android/ARCore test is documented yet.** The camera, QR scanner and WebXR session are implemented, but they must be exercised on a phone before the demo.
+2. **AR direction is not calibrated to building north.** The arrow points away from the phone at placement time; QR/compass calibration is Sprint 5.
+3. **The AR camera ↔ QR scanner handoff needs a UX decision.** WebXR owns the camera during a session, so rescanning requires exiting AR.
+4. **No HTTPS demo yet.** GitHub Pages is still disabled, so camera/WebXR cannot be tested from a public URL.
+5. **PWA install has not been exercised on a real phone.** Install criteria are met locally.
+6. **Arrival vibration and Screen Wake Lock are not implemented yet.** Planned Sprint 5.
+7. **The 3D cube remains the non-AR demo object.** It is hidden automatically when the AR session starts.
 
 ---
 
@@ -227,14 +236,16 @@ This is the honest state of the repository as of **2026-11-05**:
 
 | Sprint | Goal | Expected deliverable | Status |
 |---|---|---|---|
-| **1** | PWA structure, Three.js scene via jsDelivr, ES6 modules | A page that displays a 3D scene | ✅ **Done** |
-| **2** | QR code reading (Device API), position identification | "Vous êtes ici" | ⬜ Next |
-| **3** | Building graph, shortest path computation | Route displayed as text | ⬜ |
-| **4** | `immersive-ar` session, hit testing, arrow placement | 3D arrow anchored to the floor | ⬜ |
-| **5** | Route update on each QR scan, destination choice | Complete journey on one floor | ⬜ |
-| **6** | Service Worker (offline), optimization, tests, docs, video | Final mobile version | 🟡 Offline/icons done early |
+| **1** | PWA structure, Three.js scene, ES6 modules | A page that displays a 3D scene | ✅ **Done** |
+| **2** | QR reading, position identification | “Vous êtes ici” + camera/jsQR | ✅ **Done** |
+| **3** | Building graph, shortest path | Real route and distances | ✅ **Done** |
+| **4** | `immersive-ar`, hit testing, arrow placement | 3D arrow anchored to the floor | 🟡 **Code ready; device test pending** |
+| **5** | Route update on each QR scan, full journey | Complete journey on one floor | ⬜ Next |
+| **6** | Offline, optimization, tests, docs, video | Final mobile version | 🟡 Offline/docs/tests done early |
 
-**Progress: 1 of 6 sprints complete (≈17%).** The visual foundation is in place; the functional core (camera, graph, AR) is still to be built. The Service Worker and icons were pulled forward into v1.2.0, so Sprint 6 now focuses on final optimization, tests, documentation and the video.
+**Progress:** Sprints 1–3 complete; Sprint 4 implemented and waiting for an
+Android/ARCore run. Only the `main` branch is graded, so every sprint is merged
+there through a reviewed pull request.
 
 ---
 
@@ -249,12 +260,13 @@ flowchart TB
         MAIN["src/main.js<br/>app controller"]
         SCAN["src/scanner.js<br/>getUserMedia + BarcodeDetector / jsQR"]
         NAV["src/navigation.js<br/>graph + Dijkstra"]
-        XR["WebXR session<br/>immersive-ar · hit test · XRAnchor"]
+        AR["src/ar.js<br/>immersive-ar · hit test · XRAnchor"]
+        XR["WebXR device<br/>ARCore / emulator"]
         SW["sw.js<br/>offline cache"]
         LS[("localStorage<br/>last known node")]
     end
 
-    CDN["jsDelivr CDN<br/>Three.js r160 — pinned"]
+    CDN["jsDelivr CDN<br/>Three.js r160 + jsQR — pinned"]
     HOST["GitHub Pages — HTTPS<br/>target hosting"]
     DATA["assets/building.json<br/>nodes + edges"]
     QR["Printed QR codes<br/>one per graph node"]
@@ -266,13 +278,15 @@ flowchart TB
     MAIN --> SCAN
     SCAN --> NAV
     NAV --> DATA
-    MAIN --> XR
-    XR --> MAIN
+    MAIN --> AR
+    AR --> XR
     SW -. caches .-> HOST
     LS -. last position .-> MAIN
 ```
 
-**Reading the diagram:** solid arrows exist or are directly planned; dotted arrows are planned integrations. `scanner.js`, `navigation.js`, `building.json` and the AR session are **not implemented yet**. The Service Worker and icon set are implemented and verified offline.
+**Reading the diagram:** `scanner.js`, `navigation.js`, `building.json` and
+`ar.js` are implemented. The AR session is code-complete but still needs an
+Android/ARCore run. GitHub Pages remains the missing HTTPS host.
 
 ### Why this architecture
 
@@ -293,13 +307,13 @@ flowchart TB
 | PWA | `manifest.json` + icons | Install metadata | ✅ |
 | PWA | Service Worker (`sw.js`) | Offline cache, installability | ✅ |
 | PWA | Offline app shell | Cached first load | ✅ Verified locally |
-| Camera | `getUserMedia` | Rear camera stream | ⬜ |
-| QR | `BarcodeDetector` + **jsQR** fallback | Decode QR payloads | ⬜ |
-| AR | WebXR `immersive-ar`, hit testing, `XRAnchor` | Floor-anchored 3D arrow | ⬜ |
-| Routing | Dijkstra on a graph | Shortest path | ⬜ |
-| Device | Vibration API, Screen Wake Lock | Arrival alert, screen stays on | ⬜ |
+| Camera | `getUserMedia` | Rear camera stream | ✅ Code ready |
+| QR | `BarcodeDetector` + **jsQR** fallback | Decode QR payloads | ✅ Code ready / fake-camera tested |
+| AR | WebXR `immersive-ar`, hit testing, `XRAnchor` | Floor-anchored 3D arrow | 🟡 Code ready / device test pending |
+| Routing | Dijkstra on a graph | Shortest path | ✅ 9 tests |
+| Device | Vibration API, Screen Wake Lock | Arrival alert, screen stays on | 🟡 Vibration on QR; wake lock Sprint 5 |
 | Hosting | GitHub Pages | HTTPS static deployment | ⬜ Not enabled |
-| CDN | jsDelivr | Pinned Three.js delivery | ✅ |
+| CDN | jsDelivr | Pinned Three.js + jsQR delivery | ✅ |
 
 All libraries are loaded from **jsDelivr with pinned versions**, as required by the brief. No bundler, no npm build step: the repository is served as-is.
 
@@ -314,32 +328,31 @@ indoor-wayfinder/
 ├── index.html                 # PWA shell, UI overlay, design system
 ├── manifest.json              # PWA metadata (any + maskable icons)
 ├── sw.js                      # Offline app-shell service worker
+├── package.json               # Test script, no runtime dependency
 ├── README.md
 ├── CHANGELOG.md
+├── ATTRIBUTION.md
 ├── src/
-│   └── main.js                # Three.js scene + UI controller + app state
+│   ├── main.js                # Controller + UI + routing integration
+│   ├── scanner.js             # Camera + BarcodeDetector/jsQR
+│   ├── navigation.js          # Graph + Dijkstra + strategies
+│   └── ar.js                  # immersive-ar + hit test + arrow
 ├── assets/
-│   └── icons/                 # 180/192/512 + maskable 192/512 PNGs
-└── docs/
-    └── screenshots/           # Current UI screenshots
+│   ├── building.json          # 12-node floor graph
+│   └── icons/                 # 180/192/512 + maskable PNGs
+├── docs/
+│   ├── technical.md
+│   ├── user-manual.md
+│   ├── design-notebook.md
+│   ├── qr-codes.html
+│   └── screenshots/
+└── scripts/
+    └── test-navigation.mjs    # Node test suite
 ```
 
-### Still planned (from the brief)
-
-```text
-indoor-wayfinder/
-├── src/
-│   ├── scanner.js             # ⬜ Sprint 2 — camera + QR decoding
-│   └── navigation.js          # ⬜ Sprint 3 — graph + Dijkstra
-├── assets/
-│   ├── models/                # ⬜ optional 3D arrow asset
-│   └── building.json          # ⬜ floor plan graph
-└── docs/
-    ├── technical.md           # ⬜ install, QR generation, deployment
-    └── user-manual.md         # ⬜ step-by-step visitor guide
-```
-
-The brief also requires a **design notebook** with UML sequence, component and deployment diagrams; it can live in `/docs` or in the project report. The Git history follows the requested rule: **one explicit commit per functional step**, and every push must leave the app usable.
+**Still planned:** an optional GLB arrow asset (the arrow is procedural) and the
+5-minute demo video. The design notebook and the technical/user documentation
+are now present.
 
 ---
 
@@ -355,16 +368,24 @@ python -m http.server 8000
 
 Open <http://localhost:8000>.
 
-**What you should see:** the dark 3D scene with a rotating cube, the header badges, the scan overlay and the destination sheet. This is the Sprint 1 shell, not the final navigation app.
+**Run the graph tests:**
+
+```bash
+node --test scripts/test-navigation.mjs
+```
+
+**What you should see:** the 3D scene, a live camera scanner, graph-generated
+destinations, real Dijkstra distances, the route panel and the AR button.
 
 **Offline check:** the Service Worker registers after load. Reload once so it controls the page, then switch DevTools to offline and reload; the shell and Three.js should still boot.
 
 **Limits of this local test:**
 
 - Camera and WebXR require a **secure context**. `http://localhost` counts as secure, but a LAN IP over HTTP does not.
-- The public GitHub Pages URL would provide HTTPS; it is not deployed yet.
+- The public GitHub Pages URL would provide HTTPS; it is **not enabled yet**.
 - Real `immersive-ar` testing needs **Android Chrome with ARCore**. Desktop Chrome can use the **Immersive Web Emulator** extension.
-- No QR code works yet, because the scanner is not implemented.
+- A QR scan needs a printed/displayed code from `docs/qr-codes.html` or generated from a graph node ID.
+- The AR session is code-complete but has not yet been validated on a physical ARCore device.
 
 ---
 
@@ -385,7 +406,7 @@ Target: **GitHub Pages**, static, HTTPS by default.
 
 ## Building data model
 
-> **Status: proposal for Sprint 3. Nothing in this section is implemented yet.**
+> **Status: implemented in `assets/building.json` and consumed by `src/navigation.js`.**
 
 The floor plan is a **weighted graph** stored as JSON:
 
@@ -393,117 +414,104 @@ The floor plan is a **weighted graph** stored as JSON:
 - **Edges** — walkable connections between nodes, with a distance (or travel cost).
 - **Dijkstra** — computes the shortest path from the current QR node to the chosen destination.
 
-Proposed schema:
+Schema:
 
 ```json
 {
-  "building": "SUP'COM — Bloc B",
-  "floor": 0,
-  "units": "meters",
-  "nodes": [
-    {
-      "id": "qr-b0-n1",
-      "kind": "qr",
-      "label": "Couloir Nord — repère 1",
-      "qrPayload": "IW-B0-N1",
-      "x": 0.0,
-      "z": 0.0
-    },
-    {
-      "id": "room-b12",
-      "kind": "room",
-      "label": "Salle B12",
-      "x": 12.0,
-      "z": 4.0
-    }
-  ],
+  "building": {
+    "name": "SUP'COM – Bâtiment A",
+    "floor": "Rez-de-chaussée"
+  },
+  "nodes": {
+    "ENTREE": { "name": "Entrée principale", "x": 0, "y": 0 },
+    "HALL": { "name": "Hall principal", "x": 10, "y": 0 },
+    "SALLE_B12": { "name": "Salle B12", "x": 20, "y": -6 }
+  },
   "edges": [
-    { "from": "qr-b0-n1", "to": "qr-b0-n2", "distance": 8.0 },
-    { "from": "qr-b0-n2", "to": "room-b12", "distance": 5.0 }
+    { "from": "ENTREE", "to": "HALL", "weight": 10 },
+    { "from": "HALL", "to": "COULOIR_EST", "weight": 10 },
+    { "from": "COULOIR_EST", "to": "SALLE_B12", "weight": 6 }
   ]
 }
 ```
 
 Design rules:
 
-- A QR code payload is **stable and unique**: `IW-<building>-<floor>-<node>`.
+- The QR payload is the **node ID itself** (`ENTREE`, `SALLE_B12`, …).
 - Every QR node must exist in `nodes` and map to exactly one graph node.
-- Edges are **bidirectional** unless a future one-way constraint is added.
-- Distances are measured manually (metre tape or paced estimate); the graph does not need to be geometrically perfect, only topologically correct.
+- Edges are **bidirectional**; `BuildingGraph` stores both directions.
+- `weight` is the walking distance in metres.
 - The first version covers **one floor**; multi-floor routing is explicitly out of scope.
 
-QR generation (once the scheme is frozen):
+QR generation:
 
 ```bash
 # Example with qrencode; any QR generator works
-qrencode -o qr-b0-n1.png -s 8 -m 2 "IW-B0-N1"
+qrencode -o SALLE_B12.png -s 8 -m 2 "SALLE_B12"
 ```
 
 Print at a fixed height, one per corridor node, and record each node's position in the JSON.
 
 ---
 
-## Roadmap — the remaining five sprints
+## Roadmap — delivered and next
 
-### Sprint 2 — QR localization
+### Sprint 2 — QR localization ✅
 
 **Goal:** the app knows where the visitor is.
 
-- Create `src/scanner.js`.
-- Start the rear camera with `getUserMedia({ video: { facingMode: 'environment' } })`.
-- Decode with `BarcodeDetector` when available; fall back to **jsQR**.
-- Map the decoded payload to `currentQrNodeId`; show "Vous êtes ici : `<label>`".
-- Handle permission denied, camera unavailable, unknown QR, and decoding errors.
-- Vibrate on a successful scan.
+- `src/scanner.js`: rear camera, `BarcodeDetector` + jsQR fallback.
+- QR payload mapped to the graph node; persistent position chip.
+- Permission errors, unknown QR and camera cleanup handled.
+- Detection throttled and protected against start/stop races.
 
-**Acceptance:** scanning a printed test QR updates the displayed position; an unsupported browser still decodes via jsQR.
+**Acceptance:** scanned QR updates the position; unsupported browsers use jsQR. **Verified with a fake camera; phone test pending.**
 
-### Sprint 3 — Building graph and shortest path
+### Sprint 3 — Building graph and shortest path ✅
 
 **Goal:** the app can compute a route.
 
-- Create `assets/building.json` following the schema above.
-- Create `src/navigation.js`: load the graph, validate it, run **Dijkstra**.
-- Drive the destination sheet from the JSON instead of hard-coded HTML.
-- Show the route as an ordered text list with total distance.
-- Handle unreachable destinations and unknown start nodes.
+- `assets/building.json`: 12 nodes, 12 weighted edges.
+- `src/navigation.js`: adjacency list + Dijkstra + Strategy.
+- Destination sheet generated from the graph; no hard-coded distances.
+- Route panel with total distance and ordered legs.
+- Nine Node tests.
 
-**Acceptance:** from a given start node and destination, the app prints the correct ordered path; no route is a handled error, not a crash.
+**Acceptance:** correct ordered path and distance; unreachable routes handled. **Verified.**
 
-### Sprint 4 — WebXR augmented reality
+### Sprint 4 — WebXR augmented reality 🟡
 
 **Goal:** the arrow lives on the real floor.
 
-- Check `navigator.xr.isSessionSupported('immersive-ar')`.
-- Request a session with the `hit-test` feature; connect it to `renderer.xr`.
-- Use `frame.getHitTestResults()` to find the floor and place the arrow.
-- Stabilize it with an **`XRAnchor`**.
-- Fallback per the risk matrix: place the arrow at a **fixed distance in front of the camera** if hit testing is unstable.
-- Orient the arrow toward the next path segment.
+- `navigator.xr.isSessionSupported('immersive-ar')` check.
+- Session with `hit-test`; connected to `renderer.xr` and `local-floor`.
+- Floor reticle and tap-to-place `XRAnchor`.
+- Flat 1 m arrow, demo objects hidden, scene restored on exit.
+- Unsupported-device fallback and start/stop controls.
 
-**Acceptance:** on a compatible Android phone, the arrow appears on the floor in the camera view and points along the route; the desktop emulator shows the same scene.
+**Acceptance:** on Android/ARCore, the arrow appears on the floor. **Code ready; physical device test pending.**
 
 ### Sprint 5 — Full navigation loop
 
 **Goal:** a complete journey on one floor.
 
-- Recompute the route after every QR scan.
-- Connect destination selection to `navigation.js` and the AR scene.
-- Keep the **last known position** when the visitor is between codes; ask for a rescan instead of guessing.
-- Use the **Wake Lock API** while guiding (screen stays on).
-- Vibrate on arrival.
-- Add a "recenter / rescan" action.
+- ✅ Recompute the route after every QR scan.
+- ✅ Connect destination selection to the graph and route panel.
+- 🟡 Keep the last known position; add a clearer rescan flow.
+- ⬜ Calibrate the AR arrow to the building (QR orientation or compass).
+- ⬜ Design the AR ↔ QR camera handoff (exit AR to scan, then re-enter).
+- ⬜ Screen Wake Lock and arrival vibration.
 
-**Acceptance:** a tester walks a one-floor route with at least two QR scans; the arrow updates after each scan and the arrival is detected.
+**Acceptance:** a tester walks a one-floor route with at least two QR scans; the route and arrow update after each scan.
 
-### Sprint 6 — Offline, polish, delivery
+### Sprint 6 — Polish and delivery
 
 **Goal:** shippable MVP and documentation.
 
-- The offline shell is already shipped in v1.2.0; extend the cache to the building plan and arrow asset once they exist.
-- Verify installability on a real Android launcher (icons, manifest and Service Worker are in place).
+- Offline shell, icons and docs are already shipped.
+- Verify installability on a real Android launcher.
 - Performance pass on a mid-range Android phone.
-- Write `docs/technical.md` (install, QR generation, deployment) and `docs/user-manual.md`.
+- Physical Android/ARCore test of the QR + hit-test + anchor flow.
 - Record the **5-minute demo video** with voice-over and title slide.
 - Final tests and jury demo rehearsal.
 
@@ -513,16 +521,14 @@ Print at a fixed height, one per corridor node, and record each node's position 
 
 ## Design patterns
 
-The brief requires four patterns. None are formally implemented yet; they will be introduced as the modules land.
+The four patterns required by the brief are now present.
 
-| Pattern | Role in this project | Where it will live | Status |
+| Pattern | Role in this project | Where it lives | Status |
 |---|---|---|---|
-| **Observer** | UI and 3D arrow react to position/destination changes | `main.js` + event bus or callbacks | ⬜ |
-| **Strategy** | Swappable route strategy (shortest path, avoid stairs) | `navigation.js` | ⬜ |
-| **Facade** | `NavigationService` hides scanner + graph + scene complexity | New service module | ⬜ |
-| **Command** | Encapsulate user actions: choose destination, recompute, cancel | UI controller | ⬜ |
-
-Current code uses module-level state (`currentQrNodeId`, `currentDestinationId`) as a placeholder; that is intentional for Sprint 1 and will be refactored when the scanner and graph arrive.
+| **Observer** | QR detection notifies the controller, which updates position/route/UI | `QrScanner.onDetect` → `main.js` | ✅ |
+| **Strategy** | Swappable routing algorithms | `ShortestPathStrategy`, `AvoidStairsStrategy` | ✅ |
+| **Facade** | Hides JSON/adjacency and WebXR complexity | `BuildingGraph`, `ARGuide` | ✅ |
+| **Command** | Encapsulates user actions: scan, choose, recompute, start/stop AR | `main.js` handlers | ✅ |
 
 ---
 
@@ -548,18 +554,18 @@ From the cahier des charges:
 
 | # | Deliverable | Status |
 |---|---|---|
-| 1 | Design notebook with UML sequence, component and deployment diagrams | ⬜ |
+| 1 | Design notebook with UML sequence, component and deployment diagrams | ✅ `docs/design-notebook.md` |
 | 2 | `index.html` — PWA structure | ✅ |
-| 3 | `src/main.js` — entry point, WebXR + Three.js, ES6 modules | 🟡 Scene + UI + AR prep; WebXR session missing |
-| 4 | `src/scanner.js` — QR reading | ⬜ |
-| 5 | `src/navigation.js` — building graph + shortest path | ⬜ |
+| 3 | `src/main.js` — entry point, WebXR + Three.js, ES6 modules | ✅ |
+| 4 | `src/scanner.js` — QR reading | ✅ |
+| 5 | `src/navigation.js` — building graph + shortest path | ✅ |
 | 6 | `manifest.json` — PWA configuration | ✅ |
 | 7 | `sw.js` — Service Worker | ✅ |
-| 8 | `/assets` — 3D arrow model + building plan JSON | 🟡 Icons done; arrow model and plan missing |
-| 9 | Technical documentation (install, QR generation, deployment) | ⬜ |
-| 10 | User manual (step-by-step guide) | ⬜ |
-| 11 | Demo video, 5 minutes max, voice-over, no background music | ⬜ |
-| 12 | GitHub Pages deployment with HTTPS | ⬜ |
+| 8 | `/assets` — 3D arrow model + building plan JSON | 🟡 Plan + icons done; arrow is procedural, no GLB |
+| 9 | Technical documentation (install, QR generation, deployment) | ✅ `docs/technical.md` |
+| 10 | User manual (step-by-step guide) | ✅ `docs/user-manual.md` |
+| 11 | Demo video, 5 minutes max, voice-over, no background music | ⬜ Sprint 6 |
+| 12 | GitHub Pages deployment with HTTPS | ⬜ Owner action required |
 
 ---
 
@@ -584,13 +590,14 @@ The final jury demo, exactly as specified:
 
 | Environment | Purpose | Status |
 |---|---|---|
-| Desktop Chrome + local HTTP server | UI, scene, layout | ✅ Verified |
+| Node 24 | Dijkstra, graph, distances | ✅ 9/9 tests |
+| Desktop Chrome + local HTTP server | UI, scene, QR fake camera, routing | ✅ Verified |
 | Desktop Chrome offline | Service Worker shell | ✅ Verified |
 | Desktop Chrome + Immersive Web Emulator | WebXR dry runs without a phone | ⬜ Not set up |
 | Android Chrome + ARCore | Mandatory real AR test | ⬜ Not tested |
 | Printed QR codes in the school corridor | End-to-end journey | ⬜ Not produced |
 
-**Manual checks that already pass:** page loads without JS errors, Three.js renders, scan overlay opens/closes, destination search filters, selection updates the toast and `aria-pressed`, dialogs trap focus and restore it, zoom is enabled, muted text passes AA contrast, forced WebGL/CDN failure shows a fallback banner, and an offline reload is served from the Service Worker.
+**Manual checks that already pass:** QR `ENTREE` decoded with a fake camera, position chip updated, 9 graph destinations with real distances, Salle B12 route = 26 m / 3 steps, route recalculation on scan, AR unsupported fallback, focus trap, camera release on close, WebGL/CDN fallback, offline reload, valid manifest/icons.
 
 **Required device APIs:** `getUserMedia`, `BarcodeDetector` (or jsQR), Vibration, Screen Wake Lock, WebXR. Camera and XR require **HTTPS or localhost**.
 
@@ -608,13 +615,14 @@ Useful references:
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| `BarcodeDetector` unsupported | No localization | Use **jsQR** via jsDelivr as fallback |
-| Hit testing unstable | Arrow will not sit on the floor | Follow WebXR guidance; fixed-distance placement as fallback |
-| Position lost between QR codes | Wrong route | Keep the last known node; ask for a new scan |
-| Mobile performance | Stuttering | Light 3D model, limited lights, capped pixel ratio |
-| Schedule too tight | Incomplete features | Prioritize localization + pathfinding over polish |
-| No HTTPS demo | Camera/XR impossible to test | Enable GitHub Pages early |
-| Stale cached shell after deploy | Old UI or assets | Versioned cache + network-first navigation |
+| `BarcodeDetector` unsupported | No localization | jsQR fallback (implemented) |
+| Hit testing unstable | Arrow will not sit on the floor | Reticle + `XRAnchor`; fallback message |
+| AR direction not calibrated | Arrow points the wrong way | Sprint 5 calibration; for now it follows the phone's forward direction |
+| Camera conflict between QR and AR | Cannot rescan during AR | Exit AR, scan, re-enter; UX to finalize |
+| Position lost between QR codes | Wrong route | Keep the last known node; rescan |
+| Mobile performance | Stuttering | Light geometry, capped pixel ratio, rendering paused under overlays |
+| No HTTPS demo | Camera/XR impossible to test | Enable GitHub Pages before the session |
+| Stale cached shell after deploy | Old UI or assets | Cache version bump + network-first navigation |
 
 ---
 
@@ -640,13 +648,13 @@ Conceptually yes, but without GPS and without a map: QR codes give discrete posi
 Beacons cost money, need batteries and maintenance. Printed QR codes cost nothing, work offline and are precise enough to identify a corridor node.
 
 **Why a PWA instead of a native app?**
-No installation, no store review, instant updates, one codebase, and it satisfies the course requirement (PWA + WebXR + Device APIs).
+No installation required, no store review, instant updates, one codebase, and it satisfies the course requirement (PWA + WebXR + Device APIs).
 
 **Does the position update continuously?**
 No. It updates when a QR code is scanned. Between codes, the last known node is kept and the arrow guides to the next waypoint.
 
 **Does it work offline?**
-Yes for the app shell. After the first controlled load, the Service Worker serves the shell, icons and pinned Three.js module offline. The building-plan JSON will be added to the cache when it exists.
+Yes for the app shell: after the first controlled load, the Service Worker serves the shell, icons, Three.js, jsQR, the scanner/navigation/AR modules and `building.json` from cache.
 
 **Which phones are supported?**
 Android Chrome with ARCore is the reference. Desktop Chrome with the Immersive Web Emulator is the fallback. iOS is not a target for this MVP.
@@ -664,7 +672,7 @@ No. There is no backend, no account and no analytics. The last known node may be
 | Oussema Harrabi | [@OussemaHarrabi](https://github.com/OussemaHarrabi) |
 | Amin Jarbaoui | [@djarbouiamine](https://github.com/djarbouiamine) |
 
-**Supervisor:** Mohamed Bécha Kaaniche — SUP'COM, Département SIA.
+**Supervisor:** Mohamed-Becha Kaâniche — SUP'COM, Département SIA.
 
 **Repository:** <https://github.com/yessinomhiri-cpu/indoor-wayfinder>
 
