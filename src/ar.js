@@ -345,6 +345,16 @@ export class ARGuide {
 
     if (this.arrow) {
       this.scene.remove(this.arrow);
+      this.arrow.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((material) => material.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
       this.arrow = null;
     }
 
