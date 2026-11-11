@@ -390,6 +390,8 @@ node --test scripts/test-navigation.mjs
 **What you should see:** the 3D scene, a live camera scanner, graph-generated
 destinations, real Dijkstra distances, the route panel and the AR button.
 
+**Demo QR codes:** `docs/qr-codes/demo-sheet.png` (ENTREE, HALL, COULOIR_EST, SALLE_B12) and individual PNGs. The test sequence is in `docs/qr-codes/README.md`.
+
 **Offline check:** the Service Worker registers after load. Reload once so it controls the page, then switch DevTools to offline and reload; the shell and Three.js should still boot.
 
 **Limits of this local test:**

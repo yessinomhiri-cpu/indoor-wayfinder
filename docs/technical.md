@@ -106,8 +106,10 @@ PY
 ```
 
 La planche `docs/qr-codes.html` regroupe les codes de test. Elle utilise
-actuellement l'API QuickChart pour dessiner les QR ; pour une démonstration
-hors ligne, générer les PNG localement et les imprimer.
+actuellement l'API QuickChart pour dessiner les QR. Des PNG prêts à l'emploi
+sont aussi disponibles dans `docs/qr-codes/` (`entree.png`, `hall.png`,
+`couloir-est.png`, `salle-b12.png`, `demo-sheet.png`) avec la séquence de
+démonstration dans `docs/qr-codes/README.md`.
 
 Impression : une étiquette par nœud, hauteur constante, dans le couloir.
 La position est mise à jour uniquement quand un QR est scanné.
