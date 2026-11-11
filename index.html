@@ -6,7 +6,7 @@
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
   Modified     : 2026-11-11
-  Version      : 2.1.0 (Sprint 3/4 – QR scan, Dijkstra route, WebXR)
+  Version      : 2.2.0 (Sprint 3/4 – QR scan, Dijkstra route, WebXR)
   Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
                  a cohesive dark glassmorphism design system, accessible
                  dialogs with focus trapping, compact header with connectivity
@@ -154,10 +154,182 @@
       inset: 0;
       z-index: 0;
       overflow: hidden;
+      display: none;
+    }
+
+    #scene-container.is-ar-active {
+      display: block;
     }
 
     #scene-container canvas {
       display: block;
+    }
+
+    /* ==========================================================================
+       Indoor floor plan / demo map
+       ========================================================================== */
+    .map-view {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      padding-top: calc(94px + env(safe-area-inset-top, 0px));
+      padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+      background: radial-gradient(circle at 50% 18%, #101c36 0%, #070913 62%);
+    }
+
+    .map-view[hidden] {
+      display: none;
+    }
+
+    .map-topline,
+    .map-canvas-wrap,
+    .map-hint {
+      width: 100%;
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .map-topline {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      padding: 0 var(--space-md) var(--space-xs);
+    }
+
+    .map-eyebrow {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-accent-primary);
+    }
+
+    .map-title {
+      margin-top: 2px;
+      font-size: var(--font-size-lg);
+      color: var(--color-text-primary);
+    }
+
+    .ar-support-badge {
+      flex-shrink: 0;
+      padding: 0.35rem 0.6rem;
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-full);
+      background: var(--color-bg-glass);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+    }
+
+    .ar-support-badge.is-ready {
+      color: var(--color-success);
+      border-color: rgba(16, 185, 129, 0.45);
+    }
+
+    .map-canvas-wrap {
+      flex: 1;
+      min-height: 0;
+      padding: var(--space-xs) var(--space-md) 0;
+    }
+
+    .map-svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .map-edge {
+      stroke: rgba(148, 163, 184, 0.18);
+      stroke-width: 2;
+    }
+
+    .map-edge.route {
+      stroke: var(--color-accent-primary);
+      stroke-width: 4;
+      filter: drop-shadow(0 0 5px rgba(0, 210, 255, 0.5));
+    }
+
+    .map-node {
+      cursor: pointer;
+      outline: none;
+    }
+
+    .map-node-circle {
+      fill: #0f172a;
+      stroke: #64748b;
+      stroke-width: 2;
+      transition: fill var(--transition-fast), stroke var(--transition-fast);
+    }
+
+    .map-node.current .map-node-circle {
+      fill: var(--color-success);
+      stroke: #a7f3d0;
+    }
+
+    .map-node.destination .map-node-circle {
+      fill: var(--color-accent-primary);
+      stroke: #bae6fd;
+    }
+
+    .map-node:focus-visible .map-node-circle {
+      stroke: var(--color-focus-ring);
+      stroke-width: 4;
+    }
+
+    .map-node-label {
+      fill: var(--color-text-secondary);
+      font-family: var(--font-family-system);
+      font-size: 9px;
+      pointer-events: none;
+      paint-order: stroke;
+      stroke: var(--color-bg-base);
+      stroke-width: 3px;
+      stroke-linejoin: round;
+    }
+
+    .map-node.current .map-node-label,
+    .map-node.destination .map-node-label {
+      fill: var(--color-text-primary);
+      font-weight: 700;
+    }
+
+    .map-hint {
+      padding: 0 var(--space-md);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+      text-align: center;
+    }
+
+    /* QR image fallback, useful on desktop without a camera */
+    .qr-upload-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      margin-top: var(--space-md);
+      padding: 0.6rem 1rem;
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-full);
+      background: var(--color-bg-glass);
+      color: var(--color-text-primary);
+      font-family: var(--font-family-system);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .qr-upload-btn:hover {
+      border-color: var(--color-border-highlight);
+      background: rgba(0, 210, 255, 0.1);
+    }
+
+    .qr-upload-btn input {
+      display: none;
     }
 
     /* UI Overlay wrapper */
@@ -1069,8 +1241,23 @@
     </div>
   </noscript>
 
-  <!-- ==================== Three.js Canvas Container ==================== -->
+  <!-- ==================== Three.js Canvas Container (AR only) ==================== -->
   <div id="scene-container" aria-hidden="true"></div>
+
+  <!-- ==================== Interactive Floor Plan ==================== -->
+  <div id="map-view" class="map-view">
+    <div class="map-topline">
+      <div>
+        <div class="map-eyebrow">Plan intérieur · RDC</div>
+        <h1 class="map-title">Bâtiment A</h1>
+      </div>
+      <span id="ar-support-badge" class="ar-support-badge">AR : vérification…</span>
+    </div>
+    <div class="map-canvas-wrap">
+      <svg id="map-svg" class="map-svg" viewBox="0 0 360 640" role="group" aria-label="Graphe interactif du bâtiment"></svg>
+    </div>
+    <p id="map-hint" class="map-hint">Démo : cliquez sur un nœud pour simuler un scan QR.</p>
+  </div>
 
   <!-- ==================== UI Overlay ==================== -->
   <div id="ui-overlay">
@@ -1201,6 +1388,10 @@
       <div class="scan-guidance">
         <p class="scan-guidance-primary">Scannez le QR code le plus proche</p>
         <p class="scan-guidance-secondary">Cadrez un repère mural pour calibrer votre position intérieure et synchroniser le graphe AR.</p>
+        <label class="qr-upload-btn">
+          <input id="qr-file-input" type="file" accept="image/*" />
+          <span>Importer une image QR</span>
+        </label>
       </div>
     </div>
 

@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-11
- * Version      : 2.1.0 (Sprint 3/4 – routing + immersive AR)
+ * Version      : 2.2.0 (Sprint 3/4 – routing + immersive AR)
  * Description  : Main application controller. Initializes the Three.js 3D
  *                scene (rotating cube with visible edges, ground depth grid
  *                with fog, radial ground glow, ambient + directional lights,
@@ -160,6 +160,21 @@ const rescanRouteButton = document.getElementById('btn-rescan-route');
 
 /** @type {HTMLButtonElement} Ends the immersive-ar session */
 const stopArButton = document.getElementById('btn-stop-ar');
+
+/** @type {HTMLDivElement} Interactive SVG floor plan */
+const mapViewElement = document.getElementById('map-view');
+
+/** @type {SVGSVGElement} SVG element holding the building graph */
+const mapSvgElement = document.getElementById('map-svg');
+
+/** @type {HTMLParagraphElement} Hint below the floor plan */
+const mapHintElement = document.getElementById('map-hint');
+
+/** @type {HTMLSpanElement} WebXR availability badge */
+const arSupportBadgeElement = document.getElementById('ar-support-badge');
+
+/** @type {HTMLInputElement} QR image fallback input */
+const qrFileInput = document.getElementById('qr-file-input');
 
 // ---------------------------------------------------------------------------
 // Three.js 3D Scene Initialization
@@ -508,8 +523,9 @@ function startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh
       arGuide.update(frame);
     }
 
-    // Keep the last frame on screen while a UI overlay is open (not in AR).
-    if (!arActive && isSceneCoveredByUi()) {
+    // The floor plan is an HTML/SVG view; do not render the hidden 3D canvas.
+    const mapVisible = Boolean(mapViewElement && !mapViewElement.hidden);
+    if (!arActive && (mapVisible || isSceneCoveredByUi())) {
       return;
     }
 
@@ -666,17 +682,11 @@ function handleQrDetection(rawQrCode) {
   const scannedKey = (rawQrCode || '').trim().toUpperCase();
   console.log('[main] QR Code détecté :', scannedKey);
 
-  const node = buildingGraph.getNode(scannedKey);
-  if (node) {
-    currentQrNodeId = scannedKey;
-    updatePositionChip();
-    renderDestinationList();
-    if (currentDestinationId) {
-      updateRouteForCurrentDestination();
-    }
+  if (setCurrentNode(scannedKey)) {
     if ('vibrate' in navigator) {
       try { navigator.vibrate([100, 50, 100]); } catch (e) {}
     }
+    const node = buildingGraph.getNode(scannedKey);
     showStatusToast(`📍 Vous êtes ici : ${node.name}`, 6000);
     closeScanOverlay();
   } else if (!isGraphReady) {
@@ -697,6 +707,7 @@ async function openScanOverlay() {
 
   if (uiOverlayElement) uiOverlayElement.inert = true;
   if (destinationSheetElement) destinationSheetElement.inert = true;
+  if (mapViewElement) mapViewElement.inert = true;
   scanOverlayElement.inert = false;
   scanOverlayElement.classList.add('is-open');
   scanOverlayElement.setAttribute('aria-hidden', 'false');
@@ -731,6 +742,7 @@ function closeScanOverlay() {
   scanOverlayElement.setAttribute('aria-hidden', 'true');
   scanOverlayElement.inert = true;
   if (uiOverlayElement) uiOverlayElement.inert = false;
+  if (mapViewElement) mapViewElement.inert = false;
   if (scanTriggerButton) {
     scanTriggerButton.setAttribute('aria-expanded', 'false');
     scanTriggerButton.focus();
@@ -751,6 +763,7 @@ function openDestinationSheet() {
 
   if (uiOverlayElement) uiOverlayElement.inert = true;
   if (scanOverlayElement) scanOverlayElement.inert = true;
+  if (mapViewElement) mapViewElement.inert = true;
   destinationSheetElement.inert = false;
 
   sheetBackdropElement.classList.add('is-open');
@@ -785,6 +798,7 @@ function closeDestinationSheet() {
   destinationSheetElement.setAttribute('aria-hidden', 'true');
   destinationSheetElement.inert = true;
   if (uiOverlayElement) uiOverlayElement.inert = false;
+  if (mapViewElement) mapViewElement.inert = false;
 
   if (destinationTriggerButton) {
     destinationTriggerButton.setAttribute('aria-expanded', 'false');
@@ -827,6 +841,239 @@ function getDestinationDistance(destinationId) {
   const path = buildingGraph.findShortestPath(currentQrNodeId, destinationId);
   if (path.length < 2) return null;
   return buildingGraph.getPathDistance(path);
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** Short labels keep the schematic floor plan readable on a phone. */
+const MAP_SHORT_LABELS = {
+  ENTREE: 'Entrée',
+  HALL: 'Hall',
+  SALLE_B12: 'B12',
+  SALLE_B14: 'B14',
+  SALLE_B15: 'B15',
+  LAB_INFO: 'Labo',
+  ADMIN: 'Admin',
+  BIBLIO: 'Biblio',
+  AMPHI_A: 'Amphi A'
+};
+
+/**
+ * createSvgElement
+ * ----------------
+ * Small helper for the interactive floor plan.
+ *
+ * @param {string} tag – SVG tag name.
+ * @param {Object} attributes – Attribute map.
+ * @returns {SVGElement} Created element.
+ */
+function createSvgElement(tag, attributes) {
+  const element = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attributes)) {
+    element.setAttribute(name, String(value));
+  }
+  return element;
+}
+
+/**
+ * updateMapHint
+ * -------------
+ * Describes the current demo state below the map.
+ */
+function updateMapHint() {
+  if (!mapHintElement) return;
+
+  if (!isGraphReady) {
+    mapHintElement.textContent = 'Chargement du plan du bâtiment…';
+    return;
+  }
+  if (!currentQrNodeId) {
+    mapHintElement.textContent = 'Démo : cliquez sur un nœud pour simuler un scan QR.';
+    return;
+  }
+
+  const currentNode = buildingGraph.getNode(currentQrNodeId);
+  if (!currentDestinationId) {
+    mapHintElement.textContent =
+      `Position : ${currentNode ? currentNode.name : currentQrNodeId}. Choisissez une destination.`;
+    return;
+  }
+  if (currentRoutePath.length > 1) {
+    mapHintElement.textContent =
+      `Itinéraire : ${Math.round(currentRouteDistance)} m · ` +
+      `${currentRoutePath.length - 1} étapes — suivez la ligne cyan.`;
+    return;
+  }
+  mapHintElement.textContent = 'Aucun itinéraire disponible depuis cette position.';
+}
+
+/**
+ * renderMap
+ * ---------
+ * Draws the real building graph as an interactive SVG floor plan. Nodes are
+ * clickable in demo mode; the Dijkstra path is highlighted in cyan.
+ */
+function renderMap() {
+  if (!mapSvgElement || !isGraphReady) {
+    updateMapHint();
+    return;
+  }
+
+  const nodes = buildingGraph.getAllNodes();
+  const edges = buildingGraph.getEdges();
+  if (nodes.length === 0) return;
+
+  const width = 360;
+  const height = 640;
+  const padding = 38;
+  const minX = Math.min(...nodes.map((node) => node.x));
+  const maxX = Math.max(...nodes.map((node) => node.x));
+  const minY = Math.min(...nodes.map((node) => node.y));
+  const maxY = Math.max(...nodes.map((node) => node.y));
+  const scale = Math.min(
+    (width - padding * 2) / Math.max(maxX - minX, 1),
+    (height - padding * 2) / Math.max(maxY - minY, 1)
+  );
+  const offsetX = (width - (maxX - minX) * scale) / 2;
+  const offsetY = (height - (maxY - minY) * scale) / 2;
+
+  const project = (node) => ({
+    x: offsetX + (node.x - minX) * scale,
+    y: height - offsetY - (node.y - minY) * scale
+  });
+
+  const positions = new Map();
+  for (const node of nodes) {
+    positions.set(node.id, project(node));
+  }
+
+  const routeEdges = new Set();
+  for (let index = 0; index < currentRoutePath.length - 1; index++) {
+    const from = currentRoutePath[index];
+    const to = currentRoutePath[index + 1];
+    routeEdges.add(`${from}|${to}`);
+    routeEdges.add(`${to}|${from}`);
+  }
+
+  mapSvgElement.replaceChildren();
+
+  const edgeGroup = createSvgElement('g', { 'aria-hidden': 'true' });
+  for (const edge of edges) {
+    const from = positions.get(edge.from);
+    const to = positions.get(edge.to);
+    if (!from || !to) continue;
+
+    const line = createSvgElement('line', {
+      x1: from.x,
+      y1: from.y,
+      x2: to.x,
+      y2: to.y,
+      class: `map-edge${routeEdges.has(`${edge.from}|${edge.to}`) ? ' route' : ''}`
+    });
+    edgeGroup.appendChild(line);
+  }
+  mapSvgElement.appendChild(edgeGroup);
+
+  const nodeGroup = createSvgElement('g', {});
+  for (const node of nodes) {
+    const point = positions.get(node.id);
+    const group = createSvgElement('g', {
+      class: [
+        'map-node',
+        currentQrNodeId === node.id ? 'current' : '',
+        currentDestinationId === node.id ? 'destination' : ''
+      ].filter(Boolean).join(' '),
+      tabindex: '0',
+      role: 'button',
+      'data-node-id': node.id,
+      'aria-label': `Se positionner à ${node.name}`
+    });
+
+    group.appendChild(createSvgElement('circle', {
+      cx: point.x,
+      cy: point.y,
+      r: 7,
+      class: 'map-node-circle'
+    }));
+
+    const isCurrent = currentQrNodeId === node.id;
+    const isDestination = currentDestinationId === node.id;
+    const shortLabel = MAP_SHORT_LABELS[node.id];
+    const showLabel = Boolean(shortLabel) || isCurrent || isDestination;
+
+    if (showLabel) {
+      const isTopRow = Math.abs(node.y) < 1;
+      const labelOnLeft = !isTopRow && node.x < 15;
+      const labelX = isTopRow
+        ? point.x
+        : point.x + (labelOnLeft ? -11 : 11);
+      const labelY = isTopRow ? point.y - 12 : point.y + 3;
+      const label = createSvgElement('text', {
+        x: labelX,
+        y: labelY,
+        class: 'map-node-label',
+        'text-anchor': isTopRow ? 'middle' : (labelOnLeft ? 'end' : 'start')
+      });
+      label.textContent = shortLabel || node.name;
+      group.appendChild(label);
+    }
+
+    nodeGroup.appendChild(group);
+  }
+  mapSvgElement.appendChild(nodeGroup);
+
+  updateMapHint();
+}
+
+/**
+ * setCurrentNode
+ * --------------
+ * Applies a graph node as the current position. Used by both a real QR scan
+ * and the explicit demo click on the floor plan.
+ *
+ * @param {string} nodeId – Graph node ID.
+ * @returns {boolean} True when the node exists.
+ */
+function setCurrentNode(nodeId) {
+  const node = buildingGraph.getNode(nodeId);
+  if (!node) return false;
+
+  currentQrNodeId = nodeId;
+  updatePositionChip();
+  renderDestinationList();
+  renderMap();
+
+  if (currentDestinationId) {
+    updateRouteForCurrentDestination();
+  }
+
+  return true;
+}
+
+/**
+ * simulatePosition
+ * ----------------
+ * Demo-only entry point: clicking a graph node simulates a QR scan.
+ * The label makes the simulation explicit to the jury.
+ *
+ * @param {string} nodeId – Graph node ID.
+ */
+function simulatePosition(nodeId) {
+  if (!setCurrentNode(nodeId)) return;
+  const node = buildingGraph.getNode(nodeId);
+  showStatusToast(`Démo — vous êtes ici : ${node.name}`, 4000);
+}
+
+/**
+ * setARView
+ * ---------
+ * Switches between the floor-plan home screen and the AR canvas.
+ *
+ * @param {boolean} isAR – True while an immersive-ar session is active.
+ */
+function setARView(isAR) {
+  if (mapViewElement) mapViewElement.hidden = isAR;
+  if (sceneContainer) sceneContainer.classList.toggle('is-ar-active', isAR);
 }
 
 /**
@@ -1053,12 +1300,14 @@ function updateRouteForCurrentDestination() {
   if (!isGraphReady) {
     routeSummaryElement.textContent = 'Chargement du plan du bâtiment…';
     showRoutePanel();
+    renderMap();
     return;
   }
 
   if (!currentQrNodeId) {
     routeSummaryElement.textContent = 'Scannez un QR code pour calculer l’itinéraire.';
     showRoutePanel();
+    renderMap();
     return;
   }
 
@@ -1066,11 +1315,13 @@ function updateRouteForCurrentDestination() {
   if (path.length === 1) {
     routeSummaryElement.textContent = 'Vous êtes déjà sur place.';
     showRoutePanel();
+    renderMap();
     return;
   }
   if (path.length < 2) {
     routeSummaryElement.textContent = 'Aucun itinéraire disponible depuis cette position.';
     showRoutePanel();
+    renderMap();
     return;
   }
 
@@ -1092,6 +1343,7 @@ function updateRouteForCurrentDestination() {
 
   if (startArButton) startArButton.disabled = false;
   showRoutePanel();
+  renderMap();
 }
 
 /**
@@ -1104,6 +1356,7 @@ function updateRouteForCurrentDestination() {
 function updateARControls(isActive) {
   if (startArButton) startArButton.hidden = isActive;
   if (stopArButton) stopArButton.hidden = !isActive;
+  setARView(isActive);
 }
 
 /**
@@ -1132,11 +1385,13 @@ async function startARGuide() {
   }
 
   showStatusToast('Démarrage de la session AR…', 3000);
+  setARView(true);
 
   try {
     await arGuide.start(currentRoutePath);
   } catch (error) {
     console.error('[main] AR session failed:', error);
+    setARView(false);
     showStatusToast('Impossible de démarrer la session AR', 4500);
   }
 }
@@ -1297,7 +1552,46 @@ function initUIEventListeners() {
     });
   }
 
-  // 6. Route panel and current-position actions
+  // 6. Floor-plan demo interaction
+  if (mapSvgElement) {
+    mapSvgElement.addEventListener('click', (event) => {
+      const node = event.target.closest('[data-node-id]');
+      if (node) simulatePosition(node.getAttribute('data-node-id'));
+    });
+
+    mapSvgElement.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const node = event.target.closest('[data-node-id]');
+      if (!node) return;
+      event.preventDefault();
+      simulatePosition(node.getAttribute('data-node-id'));
+    });
+  }
+
+  // 7. QR image fallback for desktops without a camera
+  if (qrFileInput) {
+    qrFileInput.addEventListener('change', async () => {
+      const [file] = qrFileInput.files || [];
+      if (!file) return;
+
+      showStatusToast('Lecture du QR code…', 2500);
+      try {
+        const value = await qrScanner.scanImage(file);
+        if (value) {
+          handleQrDetection(value);
+        } else {
+          showStatusToast('Aucun QR code lisible dans cette image', 4000);
+        }
+      } catch (error) {
+        console.error('[main] QR image decode failed:', error);
+        showStatusToast('Impossible de lire cette image', 4000);
+      } finally {
+        qrFileInput.value = '';
+      }
+    });
+  }
+
+  // 8. Route panel and current-position actions
   if (rescanButton) rescanButton.addEventListener('click', openScanOverlay);
   if (rescanRouteButton) rescanRouteButton.addEventListener('click', openScanOverlay);
   if (closeRouteButton) {
@@ -1309,7 +1603,7 @@ function initUIEventListeners() {
   if (startArButton) startArButton.addEventListener('click', startARGuide);
   if (stopArButton) stopArButton.addEventListener('click', () => arGuide?.stop());
 
-  // 7. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
+  // 9. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
@@ -1328,7 +1622,7 @@ function initUIEventListeners() {
     }
   });
 
-  // 8. Online/Offline events
+  // 10. Online/Offline events
   window.addEventListener('online', updateNetworkStatus);
   window.addEventListener('offline', updateNetworkStatus);
   updateNetworkStatus();
@@ -1372,6 +1666,7 @@ function init() {
       isGraphReady = true;
       renderDestinationList();
       updatePositionChip();
+      renderMap();
       if (currentDestinationId) updateRouteForCurrentDestination();
       console.log('[Indoor Wayfinder] Plan du bâtiment chargé');
     })
@@ -1381,6 +1676,8 @@ function init() {
         destinationsLoadingElement.style.display = 'block';
         destinationsLoadingElement.textContent = 'Plan du bâtiment indisponible.';
       }
+      if (mapHintElement) mapHintElement.textContent = 'Plan du bâtiment indisponible.';
+      if (arSupportBadgeElement) arSupportBadgeElement.textContent = 'AR : indisponible';
     });
 
   // 2. Bind UI first so the shell remains usable if WebGL is unavailable
@@ -1394,13 +1691,16 @@ function init() {
 
     // 3. Populate 3D scene elements
     const cubeGroup = createCube();
+    cubeGroup.visible = false;
     scene.add(cubeGroup);
 
     const groundShadowMesh = createGroundShadow();
+    groundShadowMesh.visible = false;
     scene.add(groundShadowMesh);
 
     createLighting(scene);
     const gridHelper = createGridHelper(scene);
+    gridHelper.visible = false;
 
     // 4. Prepare the immersive-ar controller (session starts on demand)
     arGuide = new ARGuide({
@@ -1435,13 +1735,25 @@ function init() {
     startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh);
 
     // 7. Display initial discrete status toast
-    showStatusToast('Scène 3D initialisée ✓', 4000);
+    showStatusToast('Plan intérieur prêt ✓', 4000);
 
-    console.log('[Indoor Wayfinder] v2.1.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    arGuide.isSupported().then((supported) => {
+      if (!arSupportBadgeElement) return;
+      arSupportBadgeElement.textContent = supported
+        ? 'AR : disponible'
+        : 'AR : non disponible';
+      arSupportBadgeElement.classList.toggle('is-ready', supported);
+    });
+
+    console.log('[Indoor Wayfinder] v2.2.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
   } catch (error) {
     console.error('[Indoor Wayfinder] 3D initialization failed:', error);
     showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
     showStatusToast('Mode dégradé : rendu 3D indisponible', 5000);
+    if (arSupportBadgeElement) {
+      arSupportBadgeElement.textContent = 'AR : indisponible';
+      arSupportBadgeElement.classList.remove('is-ready');
+    }
   }
 }
 
