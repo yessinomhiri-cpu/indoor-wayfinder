@@ -1,6 +1,6 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 2.2.1 — Sprint 3/4
+**Version :** 2.2.2 — Sprint 3/4
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
@@ -157,7 +157,7 @@ fin. Le cube de démonstration est masqué hors AR.
 La flèche est générée par `createArrow()` : forme extrudée plate de 1 m,
 origine à la queue, pointe vers +Z, matériau non éclairé.
 
-**Limite v2.2.1 :** l'orientation utilise la direction de la caméra au moment
+**Limite v2.2.2 :** l'orientation utilise la direction de la caméra au moment
 du placement. La calibration au nord du bâtiment (orientation du QR ou
 boussole) est prévue au Sprint 5.
 

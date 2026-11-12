@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-11
  * Modified     : 2026-11-11
- * Version      : 2.2.1 (Sprint 4 – immersive-ar hit test + floor arrow)
+ * Version      : 2.2.2 (Sprint 4 – immersive-ar hit test + floor arrow)
  * Description  : WebXR immersive-ar controller. Starts a hit-test session,
  *                places a reticle on the real floor, anchors the navigation
  *                arrow on tap, and restores the demo scene when the session

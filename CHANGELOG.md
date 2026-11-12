@@ -3,6 +3,14 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.2] - 2026-11-12
+
+### Fixed
+
+- A new Service Worker now navigates already-open tabs after activation, so a
+  phone cannot keep running an older cached `main.js` with a newer page.
+- Cache bumped to `v2.2.2`.
+
 ## [2.2.1] - 2026-11-12
 
 ### Fixed

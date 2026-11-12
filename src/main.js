@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-11
- * Version      : 2.2.1 (Sprint 3/4 – routing + immersive AR)
+ * Version      : 2.2.2 (Sprint 3/4 – routing + immersive AR)
  * Description  : Main application controller. Initializes the Three.js 3D
  *                scene (rotating cube with visible edges, ground depth grid
  *                with fog, radial ground glow, ambient + directional lights,
@@ -1757,7 +1757,7 @@ function init() {
       arSupportBadgeElement.classList.toggle('is-ready', supported);
     });
 
-    console.log('[Indoor Wayfinder] v2.2.1 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    console.log('[Indoor Wayfinder] v2.2.2 – Scene & UI initialized. Three.js r' + THREE.REVISION);
   } catch (error) {
     console.error('[Indoor Wayfinder] 3D initialization failed:', error);
     showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
