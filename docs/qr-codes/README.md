@@ -1,58 +1,36 @@
-# QR codes de démonstration
+# QR codes — SUP'COM
 
-Ces QR encodent **l'identifiant exact d'un nœud** de `assets/building.json`.
-Ils sont prêts à afficher sur un écran ou à imprimer.
+Chaque QR encode **l'identifiant d'un lieu** de `assets/campus/supcom.json`.
+Collez-le au mur, à l'endroit du lieu : le scan place l'utilisateur à ce point
+(et à cet étage).
 
-| Fichier | Payload | Nœud |
+| Fichier | Payload | Lieu |
 |---|---|---|
-| `entree.png` | `ENTREE` | Entrée principale |
-| `hall.png` | `HALL` | Hall principal |
-| `couloir-est.png` | `COULOIR_EST` | Couloir Est |
-| `couloir-sud.png` | `COULOIR_SUD` | Couloir Sud |
-| `couloir-ouest.png` | `COULOIR_OUEST` | Couloir Ouest |
-| `salle-b12.png` | `SALLE_B12` | Salle B12 |
-| `salle-b14.png` | `SALLE_B14` | Salle B14 |
-| `salle-b15.png` | `SALLE_B15` | Salle B15 |
-| `lab-info.png` | `LAB_INFO` | Labo Informatique |
-| `admin.png` | `ADMIN` | Administration |
-| `biblio.png` | `BIBLIO` | Bibliothèque |
-| `amphi-a.png` | `AMPHI_A` | Amphithéâtre A |
-| `demo-sheet.png` | `ENTREE`, `HALL`, `COULOIR_EST`, `SALLE_B12` | Planche 2 × 2 (parcours conseillé) |
-| `full-sheet.png` | les 12 nœuds | Planche complète 3 × 4 |
+| `entree-principale.png` | `ENTREE_PRINCIPALE` | Entrée principale — RDC |
+| `accueil.png` | `ACCUEIL` | Accueil — RDC |
+| `bureau-d-ordre.png` | `BUREAU_D_ORDRE` | Bureau d'ordre — RDC |
+| `buvette.png` | `BUVETTE` | Buvette — RDC |
+| `amphi-khawarezmi.png` | `AMPHI_KHAWAREZMI` | Amphithéâtre Khawarezmi — RDC, Bloc B |
+| `amphi-ibn-rochd.png` | `AMPHI_IBN_ROCHD` | Amphithéâtre Ibn Rochd — RDC, Bloc B |
+| `amphi-ibn-el-haithem.png` | `AMPHI_IBN_EL_HAITHEM` | Amphithéâtre Ibn El Haithem — RDC, Bloc A |
+| `amphi-ibn-khaldoun.png` | `AMPHI_IBN_KHALDOUN` | Amphithéâtre Ibn Khaldoun — RDC, Bloc A |
+| `escalier-a.png`, `escalier-a2.png`, `escalier-b.png`, `escalier-b2.png`, `escalier-c.png` | `ESCALIER_*` | Escaliers (pied de l'escalier, RDC) |
+| `ascenseur-a.png`, `ascenseur-b.png` | `ASCENSEUR_*` | Ascenseurs (palier du RDC) |
+| `full-sheet.png` | les 15 | Planche complète |
 
-N'importe quel QR peut servir de départ et n'importe quel nœud d'arrivée.
-Sans QR, le sélecteur **Départ** de la liste des destinations fixe la position.
+Les salles (codes `A1-07`, `B2-05`…) s'impriment depuis
+[`docs/qr-codes.html`](../qr-codes.html), étage par étage. Alias acceptés :
+`ENTREE` → entrée principale, `HALL` → accueil.
 
 ## Démonstration conseillée
 
-1. Ouvrir <https://indoor-wayfinder-lyart.vercel.app> sur Android Chrome.
-2. Scanner `entree.png` : la position devient **Entrée principale**.
-3. Choisir **Salle B12** : itinéraire **26 m · 3 étapes**.
-4. Lancer **Guidage AR**, viser le sol, toucher pour placer la flèche.
-5. Revenir au scan et scanner `hall.png` : l'itinéraire est recalculé
-   (**16 m · 2 étapes**).
-6. Scanner `couloir-est.png` : il reste **6 m · 1 étape** jusqu'à B12.
-7. Scanner `salle-b12.png` : **« Vous êtes déjà sur place »**.
-
-## Affichage / impression
-
-- Afficher `demo-sheet.png` en plein écran sur un ordinateur portable.
-- Ou imprimer la planche en A4 paysage ; garder une marge blanche autour des QR.
-- Éviter les reflets, le mode nuit et les filtres bleus.
-- Si la caméra est indisponible, utiliser **Importer une image QR** dans le
-  scanner et choisir le PNG correspondant.
+1. Ouvrir <https://indoor-wayfinder-lyart.vercel.app> dans Chrome Android.
+2. Scanner `entree-principale.png` : « Vous êtes ici : Entrée principale (RDC) ».
+3. Choisir **Amphithéâtre Khawarezmi**, puis une salle de l'étage 3.
+4. **Guidage AR** depuis l'entrée : chevrons au sol, flèche vers le couloir.
+5. Au pied de l'escalier, scanner `escalier-a2.png` : l'itinéraire est recalé.
 
 ## Régénération
 
-```bash
-python - <<'PY'
-import qrcode
-qrcode.make('ENTREE').save('entree.png')
-PY
-```
-
-Ou utiliser `qrencode` :
-
-```bash
-qrencode -o entree.png -s 10 -m 4 "ENTREE"
-```
+Les cartes sont produites avec Python `qrcode` + Pillow à partir de
+`assets/campus/supcom.json` (modules entiers pour un décodage fiable).

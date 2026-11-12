@@ -5,16 +5,17 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Author       : Oussema Harrabi
  * Created      : 2026-11-05
- * Modified     : 2026-11-05
- * Version      : 2.3.2 (Sprint 4 – offline shell, AR + 3D view modules)
+ * Modified     : 2026-11-12
+ * Version      : 3.0.0 (offline shell, SUP'COM campus, Three.js r187 WebGPU)
  * Description  : Service Worker for the Indoor Wayfinder PWA. Precaches the
- *                app shell and the pinned Three.js module, serves navigations
+ *                app shell, the SUP'COM campus data and the pinned Three.js
+ *                WebGPU build, serves navigations
  *                network-first with an offline fallback, and serves static
  *                assets cache-first.
  * ==========================================================================
  */
 
-const CACHE_NAME = 'indoor-wayfinder-v2.3.2';
+const CACHE_NAME = 'indoor-wayfinder-v3.0.0';
 const SCOPE_URL = self.registration.scope;
 
 /** Application files required to boot the shell offline. */
@@ -27,7 +28,10 @@ const APP_SHELL = [
   new URL('src/navigation.js', SCOPE_URL).href,
   new URL('src/ar.js', SCOPE_URL).href,
   new URL('src/view3d.js', SCOPE_URL).href,
-  new URL('assets/building.json', SCOPE_URL).href,
+  new URL('src/gpu.js', SCOPE_URL).href,
+  new URL('src/geo.js', SCOPE_URL).href,
+  new URL('src/survey.js', SCOPE_URL).href,
+  new URL('assets/campus/supcom.json', SCOPE_URL).href,
   new URL('assets/icons/icon-180.png', SCOPE_URL).href,
   new URL('assets/icons/icon-192.png', SCOPE_URL).href,
   new URL('assets/icons/icon-512.png', SCOPE_URL).href,
@@ -35,9 +39,12 @@ const APP_SHELL = [
   new URL('assets/icons/maskable-512.png', SCOPE_URL).href
 ];
 
-/** Pinned CDN module; a failure here must not block the app-shell install. */
+/** Pinned CDN modules (Three.js r187 WebGPU build + jsQR); a failure here
+ *  must not block the app-shell install. */
 const CDN_ASSETS = [
-  'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
+  'https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.webgpu.js',
+  'https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.core.js',
+  'https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.tsl.js',
   'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm'
 ];
 

@@ -3,6 +3,51 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.0] - 2026-11-12
+
+The app now maps the **real SUP'COM building** (four floors) and renders
+everything with **WebGPU**.
+
+### Added
+
+- `scripts/build-campus.mjs` imports SUP'COM's own floor plans (public ArcGIS
+  layer behind supnav.supcom.tn: walls, doors, stairs, lifts, façade, columns
+  of the RDC and floors 1–3, plus 18 labels) and the surrounding campus from
+  OpenStreetMap into `assets/campus/supcom.json`: 25 cm walkable grid per
+  floor, 233 auto-detected rooms with stable codes (`A1-07`), official places
+  (4 amphitheatres, accueil, bureau d'ordre, buvette, entrée), 7 stair / lift
+  connectors, 34 neighbouring buildings.
+- Multi-floor Dijkstra router (`CampusRouter`) with stairs / lifts edges, the
+  *Sans escaliers* strategy (lifts only), path smoothing, French turn-by-turn
+  steps with compass bearings, single-pass distances to all places.
+- WebGPU 3D campus (`CampusView3D`): 4 stacked floors, floor tabs, plan view
+  (north up), neighbouring buildings, route tube + chevrons, beacon, position,
+  heading, GPS fix; tap to place yourself.
+- Compass (`deviceorientationabsolute`, Tunis declination) with an N/E/S/O rose;
+  the AR arrow and new floor chevrons follow the real corridor bearing.
+- Outdoor GPS (`watchPosition`) as a start point when accurate (≤ 30 m).
+- Survey mode: name rooms from their door plates, record doorways missing from
+  the CAD plans, undo, export `corrections.json` (re-imported by the script).
+- QR cards for the real SUP'COM places; printable board per floor; deep links
+  `?depart=…&destination=…`; Screen Wake Lock during AR; arrival vibration.
+
+### Changed
+
+- Three.js r160 → **r187** (`three.webgpu.js`). `WebGPURenderer` everywhere;
+  no WebGL in the app code. AR sessions require the `webgpu` feature
+  (`XRGPUBinding`; Chrome flag `#webxr-webgpu-binding` until enabled by
+  default). The XR loop is registered before `setSession()` as r187 requires.
+- The fictional "Bâtiment A" graph, its QR cards and screenshots are removed.
+- Destinations: all 241 places of the 4 floors, searchable.
+- Cache bumped to `v3.0.0`; the page reloads on a worker update only when it
+  was already controlled.
+
+### Known limits
+
+- 25 RDC rooms (outer rings of Blocs A and B) have no doorway on the plan:
+  routes stop at the nearest point with "Accès à confirmer".
+- AR on WebGPU is verified on a simulated WebXR device, not yet on the S23.
+
 ## [2.3.2] - 2026-11-12
 
 ### Fixed
