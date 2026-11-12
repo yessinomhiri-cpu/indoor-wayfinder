@@ -185,7 +185,14 @@ fin. Le cube de démonstration est masqué hors AR.
 La flèche est générée par `createArrow()` : forme extrudée plate de 1 m,
 origine à la queue, pointe vers +Z, matériau non éclairé.
 
-**Limite v2.3.0 :** l'orientation utilise la direction de la caméra au moment
+**Démarrage robuste (v2.3.1) :** `requestSession()` est appelé directement
+dans le geste de l'utilisateur, avec `local-floor`, `anchors` et `dom-overlay`
+en options. La racine du DOM overlay est `#ui-overlay` (jamais `body`).
+L'espace de référence est vérifié avant `renderer.xr.setSession()` :
+`local-floor` si accordé, sinon `local`. Un échec affiche sa cause réelle
+(`describeArError`) et bascule sur la vue 3D.
+
+**Limite v2.3.1 :** l'orientation utilise la direction de la caméra au moment
 du placement. La calibration au nord du bâtiment (orientation du QR ou
 boussole) est prévue au Sprint 5.
 

@@ -12,7 +12,7 @@
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Design notebook](docs/design-notebook.md) |
 | **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — HTTPS preview deployed from `main` |
-| **App version** | `v2.3.0` (Sprint 4 + interactive plan + 3D route view) |
+| **App version** | `v2.3.1` (Sprint 4 + interactive plan + 3D route view) |
 | **Sprint** | Sprints 1–3 complete; interactive demo + Sprint 4 code |
 | **Last updated** | 2026-11-12 |
 
