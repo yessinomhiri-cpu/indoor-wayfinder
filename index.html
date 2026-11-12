@@ -6,7 +6,7 @@
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
   Modified     : 2026-11-11
-  Version      : 2.2.2 (Sprint 3/4 – QR scan, Dijkstra route, WebXR)
+  Version      : 2.3.0 (Sprint 4 – QR scan, Dijkstra route, 3D view, WebXR)
   Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
                  a cohesive dark glassmorphism design system, accessible
                  dialogs with focus trapping, compact header with connectivity
@@ -234,6 +234,76 @@
       flex: 1;
       min-height: 0;
       padding: var(--space-xs) var(--space-md) 0;
+    }
+
+    .map-topline-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .view-toggle {
+      display: inline-flex;
+      padding: 2px;
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-full);
+      background: var(--color-bg-glass);
+    }
+
+    .view-toggle-btn {
+      min-width: 44px;
+      min-height: 32px;
+      padding: 0 0.8rem;
+      border: 0;
+      border-radius: var(--radius-full);
+      background: transparent;
+      color: var(--color-text-secondary);
+      font-family: var(--font-family-system);
+      font-size: var(--font-size-xs);
+      font-weight: 700;
+      cursor: pointer;
+      transition: background var(--transition-fast), color var(--transition-fast);
+    }
+
+    .view-toggle-btn[aria-pressed="true"] {
+      background: var(--color-accent-primary);
+      color: #04121f;
+    }
+
+    .view-toggle-btn:focus-visible {
+      outline: 2px solid var(--color-focus-ring);
+      outline-offset: 2px;
+    }
+
+    .map-canvas-wrap {
+      position: relative;
+    }
+
+    /* Real-time Three.js floor model (src/view3d.js) */
+    .map-3d {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .map-3d[hidden],
+    .map-svg[hidden] {
+      display: none;
+    }
+
+    .map-3d canvas {
+      display: block;
+      cursor: grab;
+    }
+
+    .map-3d canvas:active {
+      cursor: grabbing;
+    }
+
+    /* The 3D view already draws the steps; keep the panel short */
+    .route-panel.is-compact .route-steps {
+      display: none;
     }
 
     .map-svg {
@@ -1063,6 +1133,37 @@
       margin-top: 2px;
     }
 
+    /* Start-point picker (any graph node can be the departure) */
+    .sheet-start-wrapper {
+      padding: 0 var(--space-md) var(--space-xs);
+    }
+
+    .start-label {
+      flex-shrink: 0;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--color-success);
+    }
+
+    .start-select {
+      width: 100%;
+      min-height: 24px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-primary);
+      font-family: var(--font-family-system);
+      font-size: var(--font-size-sm);
+      outline: none;
+      cursor: pointer;
+    }
+
+    .start-select option {
+      background: #0f172a;
+      color: var(--color-text-primary);
+    }
+
     /* Search input container */
     .sheet-search-wrapper {
       padding: 0 var(--space-md) var(--space-sm);
@@ -1271,10 +1372,17 @@
         <div class="map-eyebrow">Plan intérieur · RDC</div>
         <h1 class="map-title">Bâtiment A</h1>
       </div>
-      <span id="ar-support-badge" class="ar-support-badge">AR : vérification…</span>
+      <div class="map-topline-actions">
+        <span id="ar-support-badge" class="ar-support-badge">AR : vérification…</span>
+        <div class="view-toggle" role="group" aria-label="Mode d'affichage du plan">
+          <button id="btn-view-2d" class="view-toggle-btn" type="button" aria-pressed="true">2D</button>
+          <button id="btn-view-3d" class="view-toggle-btn" type="button" aria-pressed="false">3D</button>
+        </div>
+      </div>
     </div>
     <div class="map-canvas-wrap">
       <svg id="map-svg" class="map-svg" viewBox="0 0 360 640" role="group" aria-label="Graphe interactif du bâtiment"></svg>
+      <div id="map-3d" class="map-3d" role="img" aria-label="Vue 3D du bâtiment et de l'itinéraire" hidden></div>
     </div>
     <p id="map-hint" class="map-hint">Démo : cliquez sur un nœud pour simuler un scan QR.</p>
   </div>
@@ -1339,7 +1447,7 @@
             <path d="M3 7l9 5 9-5"></path>
             <path d="M12 12v10"></path>
           </svg>
-          <span>Guidage AR</span>
+          <span id="btn-start-ar-label">Guidage AR</span>
         </button>
         <button id="btn-rescan-route" class="action-btn btn-action-secondary" type="button">
           <span>Scanner</span>
@@ -1434,7 +1542,7 @@
     <div class="sheet-header">
       <div>
         <h2 id="sheet-title" class="sheet-title">Choisir une destination</h2>
-        <p class="sheet-subtitle">Sélectionnez une salle pour calculer l'itinéraire</p>
+        <p class="sheet-subtitle">Choisissez un départ et une arrivée pour calculer l'itinéraire</p>
       </div>
       <button id="btn-close-destination" class="icon-btn" type="button" aria-label="Fermer la liste des destinations">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1442,6 +1550,16 @@
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
       </button>
+    </div>
+
+    <!-- Start point (QR scan or manual choice) -->
+    <div class="sheet-start-wrapper">
+      <label class="search-input-box" for="start-select">
+        <span class="start-label">Départ</span>
+        <select id="start-select" class="start-select">
+          <option value="">Scannez un QR ou choisissez…</option>
+        </select>
+      </label>
     </div>
 
     <!-- Search Input -->

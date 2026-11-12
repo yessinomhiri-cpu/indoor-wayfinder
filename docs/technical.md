@@ -1,6 +1,6 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 2.2.2 — Sprint 3/4
+**Version :** 2.3.0 — Sprint 4
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
@@ -85,6 +85,34 @@ Le chemin Dijkstra est surligné en cyan. Un clic sur un nœud appelle
 `setCurrentNode()` : c'est un mode démonstration explicite, équivalent à un
 scan QR, pour permettre une démonstration sur ordinateur sans caméra.
 
+### 4.2 Vue 3D de l'itinéraire
+
+`src/view3d.js` (`FloorView3D`) construit une maquette Three.js de l'étage à
+partir du même graphe : `x` du graphe → `x` monde, `y` du graphe → `-z` monde
+(le haut du plan 2D est au fond de la scène). Chaque arête devient un couloir,
+les salles sont des blocs translucides, les étiquettes sont des sprites.
+
+`setState({ currentId, destinationId, path })` dessine le chemin Dijkstra
+(tube cyan + chevrons animés vers la destination), une balise sur la
+destination et un marqueur « Vous êtes ici », puis cadre la caméra sur le
+trajet au-dessus du panneau d'itinéraire (`setViewOffset`). Contrôles :
+glisser = rotation, pincer / molette = zoom, toucher une salle = scan simulé.
+
+La vue a son propre `WebGLRenderer` dans `#map-3d` et ne rend que lorsqu'elle
+est visible ; le renderer de `src/ar.js` reste réservé à la session AR.
+Le choix d'une destination bascule en 3D ; sans `immersive-ar`, le bouton
+d'itinéraire devient **Voir en 3D**.
+
+### 4.3 Départ et arrivée quelconques
+
+Le départ vient d'un scan QR, d'un clic/toucher sur le plan, ou du sélecteur
+**Départ** de la feuille de destinations (`renderStartOptions()`). Les trois
+appellent `setCurrentNode()`. La liste d'arrivée est générée depuis
+**tous** les nœuds du graphe (`getOrderedNodes()`), couloirs compris ; un
+nœud ajouté à `building.json` apparaît automatiquement (visuel par défaut).
+Le test `every start/end pair…` vérifie les 144 paires : chemin valide sur des
+arêtes existantes et distance identique dans les deux sens.
+
 ## 5. QR codes
 
 Chaque QR encode **l'identifiant exact d'un nœud**, par exemple `ENTREE`,
@@ -157,7 +185,7 @@ fin. Le cube de démonstration est masqué hors AR.
 La flèche est générée par `createArrow()` : forme extrudée plate de 1 m,
 origine à la queue, pointe vers +Z, matériau non éclairé.
 
-**Limite v2.2.2 :** l'orientation utilise la direction de la caméra au moment
+**Limite v2.3.0 :** l'orientation utilise la direction de la caméra au moment
 du placement. La calibration au nord du bâtiment (orientation du QR ou
 boussole) est prévue au Sprint 5.
 

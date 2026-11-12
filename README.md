@@ -12,9 +12,9 @@
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Design notebook](docs/design-notebook.md) |
 | **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — HTTPS preview deployed from `main` |
-| **App version** | `v2.2.2` (Sprint 4 + interactive plan) |
+| **App version** | `v2.3.0` (Sprint 4 + interactive plan + 3D route view) |
 | **Sprint** | Sprints 1–3 complete; interactive demo + Sprint 4 code |
-| **Last updated** | 2026-11-11 |
+| **Last updated** | 2026-11-12 |
 
 ---
 
@@ -150,7 +150,8 @@ from `assets/building.json` + Dijkstra, not hard-coded values.
 ## What is already built
 
 Sprints 1–3 are complete; the Sprint 4 WebXR code is ready for device testing
-and the home screen is a real interactive floor plan (**v2.2.2**).
+and the home screen is a real interactive floor plan with a **2D / 3D** view
+of the building and the route (**v2.3.0**).
 
 ### 1. Mobile-first PWA shell — `index.html`
 
@@ -206,6 +207,15 @@ and the home screen is a real interactive floor plan (**v2.2.2**).
 - AR unsupported path: clear message, no crash.
 - Closed dialogs skipped by Tab, focus trapped, camera released on close.
 - WebGL/CDN failure fallbacks, offline reload and manifest/icons still pass.
+
+### 7. What was verified (2026-11-12, v2.3.0)
+
+- **Any start, any end:** all 144 start/end pairs driven through the UI
+  (**Départ** picker → destination list) match Dijkstra distance and step
+  count; 11/11 Node tests, including the all-pairs test.
+- All 12 QR cards in `docs/qr-codes/` decode with the app's `scanImage`.
+- 3D route view: `ENTREE → SALLE_B12` 26 m, `AMPHI_A → LAB_INFO` 64 m,
+  tap-to-position, rotate, 2D/3D toggle, AR → 3D fallback.
 
 ---
 

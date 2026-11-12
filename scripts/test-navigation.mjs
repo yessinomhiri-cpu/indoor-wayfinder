@@ -104,3 +104,29 @@ test('euclidean distance is computed from node coordinates', () => {
   const graph = createGraph();
   assert.equal(graph.getEuclideanDistance('ENTREE', 'HALL'), 10);
 });
+
+test('every start/end pair has a valid, symmetric shortest route', () => {
+  const graph = createGraph();
+  const nodeIds = Object.keys(buildingData.nodes);
+  const edgeKeys = new Set(
+    buildingData.edges.flatMap((edge) => [`${edge.from}|${edge.to}`, `${edge.to}|${edge.from}`])
+  );
+
+  for (const startId of nodeIds) {
+    for (const endId of nodeIds) {
+      const path = graph.findShortestPath(startId, endId);
+      assert.equal(path[0], startId, `${startId} -> ${endId} must start at ${startId}`);
+      assert.equal(path[path.length - 1], endId, `${startId} -> ${endId} must end at ${endId}`);
+
+      // Every leg must be a real corridor of the building graph
+      for (let index = 0; index < path.length - 1; index++) {
+        assert.ok(edgeKeys.has(`${path[index]}|${path[index + 1]}`),
+          `${startId} -> ${endId} uses a missing edge ${path[index]} -> ${path[index + 1]}`);
+      }
+
+      const reverse = graph.findShortestPath(endId, startId);
+      assert.equal(graph.getPathDistance(path), graph.getPathDistance(reverse),
+        `${startId} <-> ${endId} distances must match`);
+    }
+  }
+});
