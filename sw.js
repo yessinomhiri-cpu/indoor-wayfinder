@@ -6,7 +6,7 @@
  * Author       : Oussema Harrabi
  * Created      : 2026-11-05
  * Modified     : 2026-11-05
- * Version      : 2.2.1 (Sprint 3/4 – offline shell + AR module)
+ * Version      : 2.2.2 (Sprint 3/4 – offline shell + AR module)
  * Description  : Service Worker for the Indoor Wayfinder PWA. Precaches the
  *                app shell and the pinned Three.js module, serves navigations
  *                network-first with an offline fallback, and serves static
@@ -14,7 +14,7 @@
  * ==========================================================================
  */
 
-const CACHE_NAME = 'indoor-wayfinder-v2.2.1';
+const CACHE_NAME = 'indoor-wayfinder-v2.2.2';
 const SCOPE_URL = self.registration.scope;
 
 /** Application files required to boot the shell offline. */
@@ -69,7 +69,15 @@ self.addEventListener('activate', (event) => {
           .filter((cacheName) => cacheName !== CACHE_NAME)
           .map((cacheName) => caches.delete(cacheName))
       ))
-      .then(() => self.clients.claim())
+      .then(async () => {
+        await self.clients.claim();
+        // Force open tabs to reload from the new cache. This also recovers
+        // pages that were loaded from an older deployment.
+        const windowClients = await self.clients.matchAll({ type: 'window' });
+        await Promise.all(windowClients.map((client) =>
+          client.navigate(client.url).catch(() => undefined)
+        ));
+      })
   );
 });
 

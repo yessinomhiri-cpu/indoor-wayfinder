@@ -1,6 +1,6 @@
 # Design notebook — Indoor Wayfinder
 
-**Version :** 2.2.1
+**Version :** 2.2.2
 **Cahier des charges :** v1.0 — 24 octobre 2026
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 
@@ -192,7 +192,7 @@ flowchart LR
 | Hit test instable | Réticule + ancre, sinon pose au sol |
 | Direction AR non calibrée | Sprint 5 : orientation QR / boussole |
 | Performance mobile | Géométrie légère, pixel ratio ≤ 2, rendu suspendu sous les overlays |
-| Cache obsolète | Version de cache `v2.2.1`, navigation network-first |
+| Cache obsolète | Version de cache `v2.2.2`, navigation network-first |
 | Pages non actif | Activer Settings → Pages avant la démonstration |
 
 ## 11. Répartition et planning
