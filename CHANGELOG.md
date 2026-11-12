@@ -3,6 +3,38 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.0] - 2026-11-12
+
+The destination is now shown in real 3D on every phone, not only through
+WebXR AR.
+
+### Added
+
+- `src/view3d.js`: real-time Three.js model of the floor generated from
+  `assets/building.json` — floor slab, corridors, room blocks, labels.
+- The Dijkstra route is drawn as a glowing tube with chevrons that flow toward
+  the destination; the destination has a light column, a floating pin and a
+  label; the scanned node has a pulsing "Vous êtes ici" marker.
+- **2D / 3D** toggle on the floor plan. Choosing a destination switches to 3D
+  and frames the route above the route panel.
+- Touch controls in 3D: drag to rotate, pinch / wheel to zoom, tap a room to
+  simulate a QR scan (demo mode, same as the 2D plan).
+- **Any start, any end:** a **Départ** picker in the destination sheet sets
+  the start point without a QR code, and every node of `building.json`
+  (including the three corridors) can be chosen as the destination.
+- QR codes for all 12 nodes in `docs/qr-codes/` (8 new cards) and a
+  `full-sheet.png` with all of them, so every node can also be a scanned start.
+- Node test checking all 144 start/end pairs: valid edges, symmetric distances.
+
+### Changed
+
+- When `immersive-ar` is not supported, the route button reads **Voir en 3D**
+  and opens the 3D view instead of only showing "non supporté". A failed AR
+  session also falls back to the 3D view.
+- In 3D the route panel hides the step list (the steps are drawn in 3D); it is
+  still shown in 2D.
+- `src/view3d.js` added to the offline app shell; cache bumped to `v2.3.0`.
+
 ## [2.2.2] - 2026-11-12
 
 ### Fixed

@@ -8,8 +8,20 @@ Ils sont prêts à afficher sur un écran ou à imprimer.
 | `entree.png` | `ENTREE` | Entrée principale |
 | `hall.png` | `HALL` | Hall principal |
 | `couloir-est.png` | `COULOIR_EST` | Couloir Est |
+| `couloir-sud.png` | `COULOIR_SUD` | Couloir Sud |
+| `couloir-ouest.png` | `COULOIR_OUEST` | Couloir Ouest |
 | `salle-b12.png` | `SALLE_B12` | Salle B12 |
-| `demo-sheet.png` | les quatre | Planche 2 × 2 |
+| `salle-b14.png` | `SALLE_B14` | Salle B14 |
+| `salle-b15.png` | `SALLE_B15` | Salle B15 |
+| `lab-info.png` | `LAB_INFO` | Labo Informatique |
+| `admin.png` | `ADMIN` | Administration |
+| `biblio.png` | `BIBLIO` | Bibliothèque |
+| `amphi-a.png` | `AMPHI_A` | Amphithéâtre A |
+| `demo-sheet.png` | `ENTREE`, `HALL`, `COULOIR_EST`, `SALLE_B12` | Planche 2 × 2 (parcours conseillé) |
+| `full-sheet.png` | les 12 nœuds | Planche complète 3 × 4 |
+
+N'importe quel QR peut servir de départ et n'importe quel nœud d'arrivée.
+Sans QR, le sélecteur **Départ** de la liste des destinations fixe la position.
 
 ## Démonstration conseillée
 

@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-11
- * Version      : 2.2.2 (Sprint 3/4 – routing + immersive AR)
+ * Modified     : 2026-11-12
+ * Version      : 2.3.0 (Sprint 4 – routing, 3D route view + immersive AR)
  * Description  : Main application controller. Initializes the Three.js 3D
  *                scene (rotating cube with visible edges, ground depth grid
  *                with fog, radial ground glow, ambient + directional lights,
@@ -14,8 +14,8 @@
  *                powers the mobile-first UI layer (accessible dialogs,
  *                status toast, network monitor, scan overlay, destination
  *                sheet), QR scanning, graph-driven destinations, Dijkstra
- *                routes, immersive-ar guidance, graceful 3D fallback and
- *                Service Worker registration.
+ *                routes, a real-time 3D route view, immersive-ar guidance,
+ *                graceful 3D fallback and Service Worker registration.
  * ==========================================================================
  */
 
@@ -26,6 +26,7 @@ import * as THREE from 'three';
 import { QrScanner } from './scanner.js';
 import { BuildingGraph } from './navigation.js';
 import { ARGuide } from './ar.js';
+import { FloorView3D } from './view3d.js';
 
 // ---------------------------------------------------------------------------
 // Application State & Services
@@ -54,6 +55,15 @@ let currentRouteDistance = 0;
 
 /** @type {Object|null} Immersive AR controller (set during init) */
 let arGuide = null;
+
+/** @type {FloorView3D|null} Real-time 3D floor view (created on first use) */
+let floorView3D = null;
+
+/** @type {'2d'|'3d'} Current floor-plan display mode */
+let mapViewMode = '2d';
+
+/** @type {boolean} True when immersive-ar is supported on this device */
+let isArSupported = false;
 
 /** @type {number|null} Timeout identifier for auto-dismissing status toast */
 let toastDismissTimerId = null;
@@ -175,6 +185,21 @@ const arSupportBadgeElement = document.getElementById('ar-support-badge');
 
 /** @type {HTMLInputElement} QR image fallback input */
 const qrFileInput = document.getElementById('qr-file-input');
+
+/** @type {HTMLDivElement} Host of the 3D floor view canvas */
+const map3dElement = document.getElementById('map-3d');
+
+/** @type {HTMLButtonElement} Switches the floor plan to 2D */
+const view2dButton = document.getElementById('btn-view-2d');
+
+/** @type {HTMLButtonElement} Switches the floor plan to 3D */
+const view3dButton = document.getElementById('btn-view-3d');
+
+/** @type {HTMLSelectElement} Start-point picker in the destination sheet */
+const startSelectElement = document.getElementById('start-select');
+
+/** @type {HTMLSpanElement} Label of the AR / 3D route button */
+const startArLabelElement = document.getElementById('btn-start-ar-label');
 
 // ---------------------------------------------------------------------------
 // Three.js 3D Scene Initialization
@@ -819,8 +844,31 @@ const DESTINATION_VISUALS = {
   LAB_INFO: { icon: '🖥️', description: 'Laboratoire informatique', tag: 'RDC' },
   ADMIN: { icon: '🏢', description: 'Administration', tag: 'RDC' },
   BIBLIO: { icon: '📖', description: 'Bibliothèque', tag: 'RDC' },
-  AMPHI_A: { icon: '🎓', description: 'Amphithéâtre A', tag: 'RDC' }
+  AMPHI_A: { icon: '🎓', description: 'Amphithéâtre A', tag: 'RDC' },
+  COULOIR_EST: { icon: '🚶', description: 'Couloir — accès B12, B14, Labo', tag: 'Couloir' },
+  COULOIR_SUD: { icon: '🚶', description: 'Couloir — accès B14', tag: 'Couloir' },
+  COULOIR_OUEST: { icon: '🚶', description: 'Couloir — accès B15, Administration', tag: 'Couloir' }
 };
+
+/** Presentation for a node added to building.json without visuals above. */
+const DEFAULT_DESTINATION_VISUALS = { icon: '📍', description: 'Point du plan', tag: 'RDC' };
+
+/** Circulation nodes are drawn as floor discs in 3D; every other node is a room. */
+const CIRCULATION_NODE_IDS = new Set(['ENTREE', 'HALL', 'COULOIR_EST', 'COULOIR_SUD', 'COULOIR_OUEST']);
+
+/**
+ * getOrderedNodes
+ * ---------------
+ * Every graph node, in the DESTINATION_VISUALS order first, so the lists
+ * show rooms before corridors and still include any new node.
+ *
+ * @returns {Array<{id:string,name:string,x:number,y:number}>} Ordered nodes.
+ */
+function getOrderedNodes() {
+  const order = Object.keys(DESTINATION_VISUALS);
+  const rank = (id) => (order.includes(id) ? order.indexOf(id) : order.length);
+  return buildingGraph.getAllNodes().sort((a, b) => rank(a.id) - rank(b.id));
+}
 
 /**
  * getDestinationDistance
@@ -888,7 +936,9 @@ function updateMapHint() {
     return;
   }
   if (!currentQrNodeId) {
-    mapHintElement.textContent = 'Démo : cliquez sur un nœud pour simuler un scan QR.';
+    mapHintElement.textContent = mapViewMode === '3d'
+      ? 'Démo : touchez une salle pour simuler un scan QR · glissez pour pivoter.'
+      : 'Démo : cliquez sur un nœud pour simuler un scan QR.';
     return;
   }
 
@@ -918,6 +968,8 @@ function renderMap() {
     updateMapHint();
     return;
   }
+
+  syncFloorView3D();
 
   const nodes = buildingGraph.getAllNodes();
   const edges = buildingGraph.getEdges();
@@ -1074,6 +1126,115 @@ function simulatePosition(nodeId) {
 function setARView(isAR) {
   if (mapViewElement) mapViewElement.hidden = isAR;
   if (sceneContainer) sceneContainer.classList.toggle('is-ar-active', isAR);
+  if (floorView3D) floorView3D.setActive(!isAR && mapViewMode === '3d');
+}
+
+/**
+ * getRoutePanelOcclusion
+ * ----------------------
+ * Pixels of the 3D canvas covered by the route panel, so the 3D camera
+ * centres the route in the part of the screen that stays visible.
+ *
+ * @returns {number} Covered height in CSS pixels.
+ */
+function getRoutePanelOcclusion() {
+  if (!map3dElement || !routePanelElement || routePanelElement.hidden) return 0;
+  const canvasRect = map3dElement.getBoundingClientRect();
+  const panelRect = routePanelElement.getBoundingClientRect();
+  return Math.max(0, canvasRect.bottom - panelRect.top);
+}
+
+/**
+ * ensureFloorView3D
+ * -----------------
+ * Creates the 3D floor view on first use.
+ *
+ * @returns {boolean} True when the 3D view is available.
+ */
+function ensureFloorView3D() {
+  if (floorView3D) return true;
+  if (!map3dElement) return false;
+
+  const view = new FloorView3D({
+    container: map3dElement,
+    labels: MAP_SHORT_LABELS,
+    // Works even if the 3D view is created before building.json has loaded
+    roomIds: { has: (id) => !CIRCULATION_NODE_IDS.has(id) },
+    onNodeTap: (nodeId) => simulatePosition(nodeId),
+    getBottomOcclusion: getRoutePanelOcclusion
+  });
+  if (!view.init()) return false;
+
+  floorView3D = view;
+  if (isGraphReady) {
+    floorView3D.setGraph(buildingGraph.getAllNodes(), buildingGraph.getEdges());
+  }
+  syncFloorView3D();
+  return true;
+}
+
+/**
+ * syncFloorView3D
+ * ---------------
+ * Pushes the current position, destination and route to the 3D view.
+ */
+function syncFloorView3D() {
+  if (!floorView3D || !isGraphReady) return;
+
+  const names = {};
+  for (const node of buildingGraph.getAllNodes()) names[node.id] = node.name;
+
+  floorView3D.setState({
+    currentId: currentQrNodeId,
+    destinationId: currentDestinationId,
+    path: currentRoutePath,
+    names
+  });
+}
+
+/**
+ * setMapViewMode
+ * --------------
+ * Switches the floor plan between the 2D SVG graph and the 3D model.
+ *
+ * @param {'2d'|'3d'} mode – Requested display mode.
+ * @returns {boolean} True when the requested mode is shown.
+ */
+function setMapViewMode(mode) {
+  let nextMode = mode;
+  if (nextMode === '3d' && !ensureFloorView3D()) {
+    showStatusToast('Vue 3D indisponible sur ce navigateur (WebGL)', 4500);
+    nextMode = '2d';
+  }
+
+  mapViewMode = nextMode;
+  const is3d = mapViewMode === '3d';
+
+  if (mapSvgElement) {
+    if (is3d) mapSvgElement.setAttribute('hidden', '');
+    else mapSvgElement.removeAttribute('hidden');
+  }
+  if (map3dElement) map3dElement.hidden = !is3d;
+  if (view2dButton) view2dButton.setAttribute('aria-pressed', String(!is3d));
+  if (view3dButton) view3dButton.setAttribute('aria-pressed', String(is3d));
+  if (routePanelElement) routePanelElement.classList.toggle('is-compact', is3d);
+
+  const arActive = Boolean(arGuide && arGuide.isActive);
+  if (floorView3D) floorView3D.setActive(is3d && !arActive);
+
+  updateMapHint();
+  return nextMode === mode;
+}
+
+/**
+ * updateStartArLabel
+ * ------------------
+ * The route button starts immersive-ar when supported, otherwise the 3D view.
+ */
+function updateStartArLabel() {
+  if (startArLabelElement) {
+    startArLabelElement.textContent = isArSupported ? 'Guidage AR' : 'Voir en 3D';
+  }
 }
 
 /**
@@ -1123,7 +1284,11 @@ function createDestinationItem(destinationId, node, visuals) {
   const distance = document.createElement('span');
   distance.className = 'dest-distance';
   const distanceMetres = getDestinationDistance(destinationId);
-  distance.textContent = distanceMetres === null ? '—' : `${Math.round(distanceMetres)} m`;
+  if (currentQrNodeId === destinationId) {
+    distance.textContent = 'Départ';
+  } else {
+    distance.textContent = distanceMetres === null ? '—' : `${Math.round(distanceMetres)} m`;
+  }
 
   meta.append(tag, distance);
   item.append(icon, details, meta);
@@ -1154,9 +1319,9 @@ function renderDestinationList() {
   if (destinationsLoadingElement) destinationsLoadingElement.style.display = 'none';
 
   let renderedCount = 0;
-  for (const [destinationId, visuals] of Object.entries(DESTINATION_VISUALS)) {
-    const node = buildingGraph.getNode(destinationId);
-    if (!node) continue;
+  for (const node of getOrderedNodes()) {
+    const destinationId = node.id;
+    const visuals = DESTINATION_VISUALS[destinationId] || DEFAULT_DESTINATION_VISUALS;
 
     const item = createDestinationItem(destinationId, node, visuals);
     if (noDestinationsFoundMsg) {
@@ -1212,6 +1377,28 @@ function updatePositionChip() {
   const node = currentQrNodeId ? buildingGraph.getNode(currentQrNodeId) : null;
   if (positionChipElement) positionChipElement.hidden = !node;
   if (positionLabelElement) positionLabelElement.textContent = node ? node.name : '—';
+  if (startSelectElement) startSelectElement.value = node ? currentQrNodeId : '';
+}
+
+/**
+ * renderStartOptions
+ * ------------------
+ * Fills the start-point picker with every graph node.
+ */
+function renderStartOptions() {
+  if (!startSelectElement || !isGraphReady) return;
+
+  const placeholder = startSelectElement.querySelector('option[value=""]');
+  startSelectElement.replaceChildren();
+  if (placeholder) startSelectElement.appendChild(placeholder);
+
+  for (const node of getOrderedNodes()) {
+    const option = document.createElement('option');
+    option.value = node.id;
+    option.textContent = node.name;
+    startSelectElement.appendChild(option);
+  }
+  startSelectElement.value = currentQrNodeId || '';
 }
 
 /**
@@ -1222,7 +1409,10 @@ function updatePositionChip() {
 function showRoutePanel() {
   if (!routePanelElement) return;
   routePanelElement.hidden = false;
-  requestAnimationFrame(() => routePanelElement.classList.add('is-open'));
+  requestAnimationFrame(() => {
+    routePanelElement.classList.add('is-open');
+    if (floorView3D) floorView3D.resize();
+  });
 }
 
 /**
@@ -1234,6 +1424,7 @@ function hideRoutePanel() {
   if (!routePanelElement) return;
   routePanelElement.classList.remove('is-open');
   routePanelElement.hidden = true;
+  if (floorView3D) floorView3D.resize();
 }
 
 /**
@@ -1305,7 +1496,7 @@ function updateRouteForCurrentDestination() {
   }
 
   if (!currentQrNodeId) {
-    routeSummaryElement.textContent = 'Scannez un QR code pour calculer l’itinéraire.';
+    routeSummaryElement.textContent = 'Scannez un QR code ou choisissez un départ pour calculer l’itinéraire.';
     showRoutePanel();
     renderMap();
     return;
@@ -1365,11 +1556,7 @@ function updateARControls(isActive) {
  * Starts the immersive-ar arrow for the current route, or stops it.
  */
 async function startARGuide() {
-  if (!arGuide) {
-    showStatusToast('Guidage AR indisponible sur ce navigateur', 4000);
-    return;
-  }
-  if (arGuide.isActive) {
+  if (arGuide && arGuide.isActive) {
     arGuide.stop();
     return;
   }
@@ -1378,9 +1565,12 @@ async function startARGuide() {
     return;
   }
 
-  const supported = await arGuide.isSupported();
+  const supported = arGuide ? await arGuide.isSupported() : false;
   if (!supported) {
-    showStatusToast('WebXR AR non supporté sur cet appareil', 5000);
+    // No immersive-ar here: show the same route on the 3D floor model.
+    if (setMapViewMode('3d')) {
+      showStatusToast('AR non disponible sur cet appareil — itinéraire affiché en 3D', 5000);
+    }
     return;
   }
 
@@ -1392,7 +1582,8 @@ async function startARGuide() {
   } catch (error) {
     console.error('[main] AR session failed:', error);
     setARView(false);
-    showStatusToast('Impossible de démarrer la session AR', 4500);
+    setMapViewMode('3d');
+    showStatusToast('Impossible de démarrer la session AR — itinéraire affiché en 3D', 5000);
   }
 }
 
@@ -1418,6 +1609,8 @@ function selectDestination(destinationId, destinationName) {
   showStatusToast(`Destination : ${destinationName}`, 4000);
   closeDestinationSheet();
   updateRouteForCurrentDestination();
+  // Showcase the chosen destination on the 3D floor model
+  setMapViewMode('3d');
 }
 
 /**
@@ -1528,7 +1721,17 @@ function initUIEventListeners() {
     });
   }
 
-  // 5. Destination items selection
+  // 5a. Manual start point (same effect as scanning that node's QR code)
+  if (startSelectElement) {
+    startSelectElement.addEventListener('change', () => {
+      const nodeId = startSelectElement.value;
+      if (!nodeId || !setCurrentNode(nodeId)) return;
+      const node = buildingGraph.getNode(nodeId);
+      showStatusToast(`Départ : ${node.name}`, 3000);
+    });
+  }
+
+  // 5b. Destination items selection
   if (destinationListScroll) {
     destinationListScroll.addEventListener('click', (event) => {
       const item = event.target.closest('.destination-item');
@@ -1591,7 +1794,11 @@ function initUIEventListeners() {
     });
   }
 
-  // 8. Route panel and current-position actions
+  // 8. 2D / 3D floor-plan toggle
+  if (view2dButton) view2dButton.addEventListener('click', () => setMapViewMode('2d'));
+  if (view3dButton) view3dButton.addEventListener('click', () => setMapViewMode('3d'));
+
+  // 9. Route panel and current-position actions
   if (rescanButton) rescanButton.addEventListener('click', openScanOverlay);
   if (rescanRouteButton) rescanRouteButton.addEventListener('click', openScanOverlay);
   if (closeRouteButton) {
@@ -1603,7 +1810,7 @@ function initUIEventListeners() {
   if (startArButton) startArButton.addEventListener('click', startARGuide);
   if (stopArButton) stopArButton.addEventListener('click', () => arGuide?.stop());
 
-  // 9. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
+  // 10. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
@@ -1622,7 +1829,7 @@ function initUIEventListeners() {
     }
   });
 
-  // 10. Online/Offline events
+  // 11. Online/Offline events
   window.addEventListener('online', updateNetworkStatus);
   window.addEventListener('offline', updateNetworkStatus);
   updateNetworkStatus();
@@ -1676,6 +1883,10 @@ function init() {
   buildingGraph.loadGraph('assets/building.json')
     .then(() => {
       isGraphReady = true;
+      renderStartOptions();
+      if (floorView3D) {
+        floorView3D.setGraph(buildingGraph.getAllNodes(), buildingGraph.getEdges());
+      }
       renderDestinationList();
       updatePositionChip();
       renderMap();
@@ -1750,6 +1961,8 @@ function init() {
     showStatusToast('Plan intérieur prêt ✓', 4000);
 
     arGuide.isSupported().then((supported) => {
+      isArSupported = supported;
+      updateStartArLabel();
       if (!arSupportBadgeElement) return;
       arSupportBadgeElement.textContent = supported
         ? 'AR : disponible'
@@ -1757,11 +1970,12 @@ function init() {
       arSupportBadgeElement.classList.toggle('is-ready', supported);
     });
 
-    console.log('[Indoor Wayfinder] v2.2.2 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    console.log('[Indoor Wayfinder] v2.3.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
   } catch (error) {
     console.error('[Indoor Wayfinder] 3D initialization failed:', error);
     showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
     showStatusToast('Mode dégradé : rendu 3D indisponible', 5000);
+    updateStartArLabel();
     if (arSupportBadgeElement) {
       arSupportBadgeElement.textContent = 'AR : indisponible';
       arSupportBadgeElement.classList.remove('is-ready');

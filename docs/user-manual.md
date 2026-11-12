@@ -1,6 +1,6 @@
 # Manuel utilisateur — Indoor Wayfinder
 
-**Version :** 2.2.2
+**Version :** 2.3.0
 **Public :** visiteurs, étudiants, candidats, personnel du bâtiment
 
 ## Ce dont vous avez besoin
@@ -22,9 +22,16 @@ navigateur. Vous pouvez l'ajouter à l'écran d'accueil depuis le menu Chrome.
    - Le voyant de position affiche **« Vous êtes ici : … »**.
    - Si le QR est inconnu, vérifiez que vous êtes dans le bon bâtiment.
 5. Appuyez sur **DESTINATION**.
-6. Cherchez ou choisissez une salle, par exemple **Salle B12**.
+   - Le champ **Départ** affiche votre position ; vous pouvez la changer à la
+     main si aucun QR n'est à portée.
+6. Cherchez ou choisissez une salle ou un couloir, par exemple **Salle B12**.
+   Tous les points du plan sont accessibles depuis n'importe quel départ.
    - L'itinéraire affiche la distance réelle et les étapes calculées par Dijkstra.
+   - Le plan passe en **3D** : la ligne cyan mène à la balise de la salle.
+     Glissez pour pivoter, pincez pour zoomer ; le bouton **2D** revient au plan.
 7. Lisez le trajet, puis appuyez sur **Guidage AR**.
+   - Sans AR sur le téléphone, ce bouton s'appelle **Voir en 3D** et affiche
+     l'itinéraire sur la maquette 3D.
 8. Visez le sol avec la caméra, puis **touchez l'écran** pour placer la flèche.
 9. Suivez la flèche jusqu'au prochain QR code.
 10. Au QR suivant, appuyez sur **Scanner** pour recalibrer la position ;
@@ -51,6 +58,8 @@ fonctionnement sans téléphone ; la démonstration réelle utilise la caméra.
 | Badge **En ligne / Hors ligne** | État de la connexion |
 | Badge **AR : disponible / non disponible** | Support WebXR de l'appareil |
 | Plan + ligne cyan | Graphe du bâtiment et itinéraire calculé |
+| Boutons **2D / 3D** | Plan schématique ou maquette 3D de l'étage |
+| Bouton **Voir en 3D** | Remplace **Guidage AR** quand l'AR n'est pas disponible |
 
 ## Bon à savoir
 
@@ -65,7 +74,7 @@ fonctionnement sans téléphone ; la démonstration réelle utilise la caméra.
 |---|---|
 | La caméra ne s'ouvre pas | Vérifiez l'URL HTTPS et l'autorisation caméra dans Chrome |
 | « QR code inconnu » | Vérifiez que le QR appartient au plan `building.json` |
-| Aucun itinéraire | Scannez d'abord un QR, puis choisissez la destination |
+| Aucun itinéraire | Scannez un QR ou choisissez un **Départ**, puis la destination |
 | « AR non supporté » | Utilisez Chrome Android avec ARCore et HTTPS |
 | Le sol n'est pas détecté | Déplacez légèrement le téléphone, évitez les surfaces réfléchissantes |
 | La flèche n'apparaît pas | Touchez l'écran après avoir visé le sol |

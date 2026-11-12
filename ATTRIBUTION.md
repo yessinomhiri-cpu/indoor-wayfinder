@@ -3,8 +3,8 @@
 **Projet :** Indoor Wayfinder — Navigation intérieure en réalité augmentée
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
-**Version :** 1.1 — Évaluation SUP'COM (2026/2027)
-**Dernière mise à jour :** 11 novembre 2026
+**Version :** 1.2 — Évaluation SUP'COM (2026/2027)
+**Dernière mise à jour :** 12 novembre 2026
 
 ---
 
@@ -30,6 +30,12 @@ Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
     *   **Licence :** Code du projet
     *   **Modifications apportées par l'équipe :** Dégradé cyan, opacité et échelle animées avec le cube
 
+*   **Asset :** Maquette 3D de l'étage et de l'itinéraire (`src/view3d.js`)
+    *   **Source originale :** Aucune URL externe — dalle, couloirs, salles, tube d'itinéraire, chevrons, balise de destination et marqueur de position générés par code avec Three.js (`BoxGeometry`, `TubeGeometry`, `ShapeGeometry`, `ConeGeometry`, `RingGeometry`, `Sprite`) à partir de `assets/building.json` ; étiquettes dessinées à l'exécution sur un canvas 2D
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet
+    *   **Modifications apportées par l'équipe :** Aucun modèle importé ; couleurs du design system, animation des chevrons le long du chemin Dijkstra, désactivée avec `prefers-reduced-motion`
+
 *   **Asset :** Icônes PWA (`assets/icons/icon-180.png`, `icon-192.png`, `icon-512.png`, `maskable-192.png`, `maskable-512.png`)
     *   **Source originale :** Aucune URL externe — générées par l'équipe avec Python/Pillow à partir du logo boussole du projet
     *   **Auteur / Créateur :** Équipe Indoor Wayfinder
@@ -47,6 +53,12 @@ Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
     *   **Auteur / Créateur :** Fournisseurs des systèmes d'exploitation et navigateurs
     *   **Licence :** Licences système/navigateur ; aucune police web n'est redistribuée
     *   **Modifications apportées par l'équipe :** Aucune police téléchargée ni modifiée
+
+*   **Asset :** QR codes de démonstration (`docs/qr-codes/*.png`, `docs/qr-codes/demo-sheet.png`, `docs/qr-codes/full-sheet.png`)
+    *   **Source originale :** Aucune URL externe — images générées localement par l'équipe avec la bibliothèque Python `qrcode` et Pillow ; chaque QR encode l'identifiant d'un nœud de `assets/building.json`
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet ; `qrcode` (licence BSD) et Pillow (licence HPND) ne sont utilisés qu'à la génération et ne sont pas redistribués avec l'application
+    *   **Modifications apportées par l'équipe :** Une carte par nœud (12) avec nom et identifiant, planche 2 × 2 (parcours conseillé) et planche complète 3 × 4
 
 *   **Asset :** Planche de QR codes de test (`docs/qr-codes.html`)
     *   **Source originale :** Page HTML de l'équipe ; images QR générées à la volée par l'API externe QuickChart — https://quickchart.io/qr
@@ -69,7 +81,7 @@ Rappel : L'usage des versions "latest" depuis les CDN est proscrit.
 *   **Bibliothèque :** Three.js
     *   **Version fixée :** 0.160.0 (r160)
     *   **Lien CDN de référence :** https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js
-    *   **Rôle dans le projet :** Moteur de rendu 3D : scène, caméra, renderer, géométries, matériaux, boucle de rendu et intégration WebXR (`renderer.xr`) dans `src/main.js` et `src/ar.js`
+    *   **Rôle dans le projet :** Moteur de rendu 3D : scène, caméra, renderer, géométries, matériaux, boucle de rendu, intégration WebXR (`renderer.xr`) dans `src/main.js` et `src/ar.js`, et vue 3D de l'itinéraire dans `src/view3d.js`
 
 *   **Bibliothèque :** Three.js addons (import map)
     *   **Version fixée :** 0.160.0 (r160)
@@ -142,6 +154,14 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
 *   **Composant ou Shader concerné :** Guidage AR (`src/ar.js`, intégration dans `src/main.js`)
     *   **Prompt ou usage principal :** Implémentation de la session `immersive-ar`, de `hit-test`, du réticule au sol, de `XRAnchor`, de la flèche et du nettoyage de session
     *   **Axe de vérification appliqué par l'étudiant :** `node --check`, chargement de la page sans erreur, test du chemin « AR non supportée », revue du cycle de session et des ressources ; **test physique Android/ARCore encore requis**
+
+*   **Composant ou Shader concerné :** Vue 3D de l'itinéraire (`src/view3d.js`, bascule 2D/3D dans `src/main.js` et `index.html`)
+    *   **Prompt ou usage principal :** Claude (Anthropic) : génération de la maquette 3D de l'étage depuis le graphe, du tube d'itinéraire animé, de la balise de destination, des contrôles tactiles (rotation, pincement, sélection par raycast) et du repli « Voir en 3D » quand `immersive-ar` n'est pas disponible
+    *   **Axe de vérification appliqué par l'étudiant :** Navigateur mobile 375 × 812 : `ENTREE → SALLE_B12` = 26 m / 3 étapes affiché en 3D ; touche sur la salle B15 = position B15 ; `B15 → LAB_INFO` = 54 m / 5 étapes ; rotation par glisser ; bascule 2D/3D ; repli AR → 3D ; **test physique Android encore requis**
+
+*   **Composant ou Shader concerné :** Départ et arrivée quelconques (`src/main.js` — `renderStartOptions`, `getOrderedNodes`, liste de destinations ; sélecteur **Départ** dans `index.html`), QR des 12 nœuds, test de toutes les paires (`scripts/test-navigation.mjs`)
+    *   **Prompt ou usage principal :** Claude (Anthropic) : choix manuel du point de départ, destinations générées depuis tous les nœuds du graphe, génération des 8 QR manquants et de la planche complète, test Node des 144 paires départ/arrivée
+    *   **Axe de vérification appliqué par l'étudiant :** Parcours UI automatisé des 144 paires (sélecteur Départ → liste → itinéraire) : distance et nombre d'étapes identiques à Dijkstra, bouton AR désactivé si départ = arrivée, aucune erreur console ; les 12 QR décodés par `scanImage` (jsQR) de l'application ; 11/11 tests Node
 
 *   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
     *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, navigation network-first, assets cache-first), du manifeste et des icônes
