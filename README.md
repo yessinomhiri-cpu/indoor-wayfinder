@@ -12,7 +12,7 @@
 | **Changelog** | [CHANGELOG.md](CHANGELOG.md) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Design notebook](docs/design-notebook.md) |
 | **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — HTTPS preview deployed from `main` |
-| **App version** | `v2.2.0` (Sprint 4 + interactive plan) |
+| **App version** | `v2.2.1` (Sprint 4 + interactive plan) |
 | **Sprint** | Sprints 1–3 complete; interactive demo + Sprint 4 code |
 | **Last updated** | 2026-11-11 |
 
@@ -130,7 +130,7 @@ sequenceDiagram
 
 ## Screenshots
 
-Captured on **2026-11-11** from v2.2.0 at a 390 × 844 mobile viewport.
+Captured on **2026-11-11** from v2.2.1 at a 390 × 844 mobile viewport.
 
 | Home — interactive floor plan | Scanner + QR fallback |
 |:---:|:---:|
@@ -150,7 +150,7 @@ from `assets/building.json` + Dijkstra, not hard-coded values.
 ## What is already built
 
 Sprints 1–3 are complete; the Sprint 4 WebXR code is ready for device testing
-and the home screen is a real interactive floor plan (**v2.2.0**).
+and the home screen is a real interactive floor plan (**v2.2.1**).
 
 ### 1. Mobile-first PWA shell — `index.html`
 

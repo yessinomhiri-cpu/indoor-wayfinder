@@ -6,7 +6,7 @@
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
   Modified     : 2026-11-11
-  Version      : 2.2.0 (Sprint 3/4 – QR scan, Dijkstra route, WebXR)
+  Version      : 2.2.1 (Sprint 3/4 – QR scan, Dijkstra route, WebXR)
   Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
                  a cohesive dark glassmorphism design system, accessible
                  dialogs with focus trapping, compact header with connectivity
@@ -496,6 +496,26 @@
 
     .render-fallback strong {
       color: var(--color-alert);
+    }
+
+    .render-fallback-reset {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: var(--space-xs);
+      padding: 0.45rem 0.8rem;
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      border-radius: var(--radius-full);
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--color-text-primary);
+      font-family: var(--font-family-system);
+      font-size: var(--font-size-xs);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .render-fallback-reset:hover {
+      background: rgba(239, 68, 68, 0.22);
     }
 
     .render-fallback[hidden] {
@@ -1281,8 +1301,11 @@
 
     <!-- 3D Render / Module Failure Fallback -->
     <div id="render-fallback" class="render-fallback" role="alert" hidden>
-      <strong>Rendu 3D indisponible.</strong>
-      <span id="render-fallback-message">La scène 3D et le guidage AR ne sont pas disponibles. Rechargez la page pour réessayer.</span>
+      <strong>Application interrompue.</strong>
+      <span id="render-fallback-message">Le chargement a échoué. Vérifiez votre connexion, puis réinitialisez l'application.</span>
+      <button id="render-fallback-reset" class="render-fallback-reset" type="button">
+        Réinitialiser l'application
+      </button>
     </div>
 
     <!-- Discreet Status Toast (Auto-dismissing) -->
@@ -1451,24 +1474,55 @@
 
   <!-- ==================== Main JavaScript Entrypoint ==================== -->
   <script>
-    // Reveal the fallback if the module graph or the CDN fails to load.
+    // Reveal a recoverable fallback if a module or the app startup fails.
     (function () {
-      function showFallback() {
+      function showFallback(messageText) {
         var fallback = document.getElementById('render-fallback');
         var message = document.getElementById('render-fallback-message');
-        if (message) {
-          message.textContent = "Le moteur 3D n'a pas pu être chargé. Vérifiez votre connexion puis rechargez la page.";
+        if (message && messageText) {
+          message.textContent = messageText;
         }
         if (fallback) fallback.hidden = false;
       }
+
+      async function resetApplication() {
+        try {
+          if ('serviceWorker' in navigator) {
+            var registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map(function (registration) {
+              return registration.unregister();
+            }));
+          }
+          if ('caches' in window) {
+            var keys = await caches.keys();
+            await Promise.all(keys.map(function (key) {
+              return caches.delete(key);
+            }));
+          }
+        } catch (error) {
+          console.error('[Indoor Wayfinder] reset failed:', error);
+        }
+        window.location.reload();
+      }
+
+      var resetButton = document.getElementById('render-fallback-reset');
+      if (resetButton) {
+        resetButton.addEventListener('click', resetApplication);
+      }
+
       window.addEventListener('error', function (event) {
         if (event.target && event.target.tagName === 'SCRIPT') {
-          showFallback();
+          showFallback("Un module de l'application n'a pas pu être chargé. Vérifiez votre connexion, puis réinitialisez.");
         } else if (event.error) {
-          showFallback();
+          console.error('[Indoor Wayfinder] runtime error:', event.error);
+          showFallback("Une erreur inattendue a interrompu l'application. Réinitialisez pour repartir sur une version propre.");
         }
       }, true);
-      window.addEventListener('unhandledrejection', showFallback);
+
+      window.addEventListener('unhandledrejection', function (event) {
+        console.error('[Indoor Wayfinder] unhandled rejection:', event.reason);
+        showFallback("Une erreur inattendue a interrompu l'application. Réinitialisez pour repartir sur une version propre.");
+      });
     })();
   </script>
   <script type="module" src="src/main.js"></script>

@@ -3,6 +3,19 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.1] - 2026-11-12
+
+### Fixed
+
+- Mobile deployment could mix an older cached `main.js`/`navigation.js` with
+  the new page after a redeploy, triggering the generic fallback.
+- Service Worker now reloads once after a new worker claims the page.
+- Fallback banner has an explicit **Réinitialiser l'application** button that
+  unregisters the worker, clears caches and reloads.
+- Fallback message no longer incorrectly claims that 3D/WebXR failed; it now
+  reports a startup/module failure with a recovery action.
+- Cache bumped to `v2.2.1`.
+
 ## [2.2.0] - 2026-11-11
 
 Concrete demo pass: the home screen is now the real building graph, not the

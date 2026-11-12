@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-11
- * Version      : 2.2.0 (Sprint 3 – graph + Dijkstra)
+ * Version      : 2.2.1 (Sprint 3 – graph + Dijkstra)
  * Description  : Loads the building graph from a JSON file, stores it as
  *                an adjacency list, and exposes pathfinding via the
  *                Strategy pattern (ShortestPathStrategy by default).

@@ -1,6 +1,6 @@
 # Manuel utilisateur — Indoor Wayfinder
 
-**Version :** 2.2.0
+**Version :** 2.2.1
 **Public :** visiteurs, étudiants, candidats, personnel du bâtiment
 
 ## Ce dont vous avez besoin
