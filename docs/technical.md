@@ -138,11 +138,32 @@ affichée et le toucher suivant utilise `['webgpu', 'hit-test']`.
 Avec Three.js r187, la boucle `setAnimationLoop` est posée **avant**
 `renderer.xr.setSession()`.
 
-**Orientation :** la boussole donne le cap vrai de la caméra, WebXR son lacet
-dans le monde AR ; leur différence (moyenne circulaire) convertit tout cap du
-plan en direction AR. Les 40 premiers mètres de l'itinéraire sont dessinés au
-sol en chevrons depuis la position du QR scanné ; la flèche posée au toucher
-prend le cap du segment le plus proche.
+**Localisation en continu (`src/ar-guidance.js`).** Le QR scanné fixe le point
+de départ ; ARCore suit chaque pas et chaque rotation (pose de la caméra
+WebXR). La transformation monde AR → plan (angle φ, translation δ) part de la
+boussole puis est corrigée par **correspondance cartographique** toutes les
+0,6 s : recherche globale de φ (±30°, pas de 1°) et de δ (±1 m) qui place la
+trajectoire parcourue dans les cellules praticables du plan (murs = contrainte
+forte, −3 par point dans un mur) et près de l'itinéraire (contrainte faible,
+seulement pour les tronçons parcourus sur l'itinéraire). La boussole ne sert
+plus qu'à départager. Étages : hauteur de la caméra (escaliers), recalage sur
+le palier d'arrivée connu du plan ; ascenseur : bouton de confirmation.
+
+**Guidage.** Projection sur l'itinéraire, prochaine manœuvre (« Dans 6 m,
+tournez à gauche », « Prenez l'escalier… », « Faites demi-tour »), distance
+restante, sortie d'itinéraire > 3,2 m pendant 2,5 s → recalcul depuis la
+position suivie, arrivée à moins de 2 m. Rendu dans un repère aligné sur le
+plan : chevrons sur les 25 m suivants, flèches de virage, panneaux escalier /
+ascenseur, épingle de destination, **murs réels en occulteurs invisibles**
+(`colorWrite: false`). Le HUD (DOM overlay) affiche la consigne, une flèche
+qui tourne avec l'utilisateur, la pièce traversée, la confiance, une
+mini-carte orientée et les boutons Aligner / Je suis à… / Quitter.
+
+**Précision mesurée (simulation, `scripts/test-guidance.mjs`) :** erreur
+moyenne < 0,6 m et alignement à moins de 3° malgré une boussole faussée de
+±15° ; dans un grand espace ouvert avec dérive forte et utilisateur hors
+itinéraire, l'erreur peut atteindre quelques mètres → « Je suis à… » ou
+nouveau scan QR.
 
 **Prérequis téléphone :** Chrome Android à jour, Google Play Services for AR,
 et `chrome://flags/#webxr-webgpu-binding` → *Enabled*, puis redémarrer Chrome.

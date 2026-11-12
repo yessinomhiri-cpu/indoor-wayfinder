@@ -11,7 +11,7 @@
 | **Brief** | Cahier des charges v1.0 — 24 October 2026 (scope extended by the supervisor: whole SUP'COM building, floors, compass, GPS, WebGPU) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Design notebook](docs/design-notebook.md) · [Changelog](CHANGELOG.md) · [Attribution](ATTRIBUTION.md) |
 | **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) |
-| **App version** | `v3.0.0` |
+| **App version** | `v3.1.0` |
 | **Last updated** | 2026-11-12 |
 
 ---
@@ -27,7 +27,12 @@
    - outdoors, use GPS.
 4. **Route.** Dijkstra runs on a 25 cm walkable grid covering all four floors. Stairs and lifts connect the floors, and a "no stairs" strategy uses lifts only. Steps are in French with compass directions, for example "Marchez 22 m vers le Sud-Ouest" or "Prenez l'escalier (Bloc A) jusqu'à l'étage 3".
 5. **3D view (WebGPU).** All four floors are stacked, with a floor selector, a plan view (north up), an animated route, a destination beacon, your position, your heading and the GPS fix.
-6. **AR guidance (WebXR on WebGPU).** Hit testing finds the real floor. The compass aligns the AR world with true north, so the floor chevrons follow the actual route and the anchored arrow points down the real corridor.
+6. **Live turn-by-turn AR (WebXR on WebGPU).** The QR scan fixes your start point and ARCore tracks every step and turn. Your walked path is continuously **map-matched to the real SUP'COM walls**, so the app knows where you are and which way you face. It shows:
+   - the next 25 m of the route as flowing chevrons on the floor, with big arrows at the turns;
+   - the real walls as invisible occluders, so arrows never show through a wall;
+   - a HUD ("Dans 6 m, tournez à gauche", "Faites demi-tour") with an arrow that turns as you turn, plus a heading-up mini-map;
+   - automatic rerouting and floor changes on the stairs.
+   In simulated walks with the compass off by ±15°, the mean position error stays under 0.6 m (`scripts/test-guidance.mjs`).
 
 <img src="docs/screenshots/route-3d-webgpu.jpg" width="420" alt="SUP'COM in 3D (WebGPU): four floors and the route to Local A3-18">
 <img src="docs/screenshots/plan-rdc.jpg" width="300" alt="Plan view of the ground floor with the route to the Bloc A stairs">
@@ -50,7 +55,7 @@ All 3D is rendered by Three.js **r187** `WebGPURenderer` on the **WebGPU** backe
 ## Run it
 
 ```bash
-node --test scripts/test-navigation.mjs   # 13 tests: campus, routing, strategies, compass
+npm test                                  # 25 tests: campus, routing, compass + 12 simulated AR walks
 python -m http.server 8000                # http://localhost:8000 (HTTPS needed on the phone)
 node scripts/build-campus.mjs             # re-import the SUP'COM plans + OpenStreetMap
 ```

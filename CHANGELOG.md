@@ -3,6 +3,41 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.0] - 2026-11-12
+
+**Real turn-by-turn AR guidance.** The AR mode now knows where the user is at
+every moment and guides step by step, instead of placing one arrow.
+
+### Added
+
+- `src/ar-guidance.js` (`ARGuidance`): live localization during the AR session.
+  The QR scan fixes the start point, ARCore tracks every step and rotation, and
+  the yaw between the AR world and true north starts from the compass and is
+  then corrected by **map matching**: the walked trajectory is fitted to the
+  walkable cells of the SUP'COM plan (walls are a hard constraint, the route a
+  soft one). Floors are followed from the phone height on stairs, and the
+  position is re-anchored on the stairs landing; lifts are confirmed with a
+  button.
+- AR visuals in a frame aligned with the plan: the next 25 m of the route as
+  flowing chevrons on the floor, large turn arrows at the coming turns,
+  stairs / lift signs, destination pin, and the **real walls as invisible depth
+  occluders** so guidance never shows through a wall.
+- AR HUD (DOM overlay): live instruction ("Dans 6 m, tournez à gauche",
+  "Faites demi-tour"), an arrow that turns with the user, remaining distance,
+  floor and current room / corridor, position confidence, heading-up mini-map
+  of the real walls, **Aligner sur le trajet**, **Je suis à…** (snap to a nearby
+  place), **Je suis sorti de l'ascenseur**, **Quitter AR**.
+- Automatic rerouting after leaving the route; arrival detection with
+  vibration; the map shows where AR tracking left the user.
+- `scripts/test-guidance.mjs`: 12 simulated walks through SUP'COM (unknown AR
+  yaw, compass biased by ±15°): mean position error < 0.6 m, alignment within
+  3°, arrival, stairs to the 3rd floor, rerouting and "Faites demi-tour".
+- `?debug` exposes the live tracking state for field tests.
+
+### Changed
+
+- Cache bumped to `v3.1.0`; `npm test` runs both test files (25 tests).
+
 ## [3.0.0] - 2026-11-12
 
 The app now maps the **real SUP'COM building** (four floors) and renders

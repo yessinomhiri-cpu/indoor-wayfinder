@@ -26,9 +26,22 @@
    d'étage et les consignes (« Marchez 22 m vers le Sud-Ouest », « Prenez
    l'escalier jusqu'à l'étage 3 »). Cochez **Sans escaliers** pour passer par
    les ascenseurs.
-5. **Guidage AR** : tenez-vous à l'endroit du QR scanné, visez le sol. Des
-   chevrons cyan montrent le début du trajet ; touchez le sol pour poser la
-   flèche, orientée vers le couloir à prendre.
+5. **Guidage AR** : tenez-vous à l'endroit du QR scanné et tenez le téléphone
+   devant vous, caméra vers le couloir. Marchez normalement :
+   - des **chevrons cyan** sur le sol montrent les 25 m suivants et avancent
+     avec vous ; de **grandes flèches** marquent les virages ;
+   - le **bandeau** en haut donne la consigne (« Dans 6 m, tournez à gauche »)
+     et une flèche qui tourne quand vous tournez ; dessous : distance restante,
+     étage et pièce où vous êtes ;
+   - la **mini-carte** en bas montre les vrais murs autour de vous ;
+   - la position s'affine d'elle-même après quelques mètres (« calée sur les
+     murs »). Si les chevrons semblent décalés : **Aligner sur le trajet**
+     (face au trajet de la mini-carte) ou **Je suis à…** (choisir le lieu où
+     vous êtes) ;
+   - dans l'escalier, l'étage change tout seul ; après un ascenseur, touchez
+     **Je suis sorti de l'ascenseur** ;
+   - si vous vous trompez de chemin, l'itinéraire est **recalculé** ;
+   - touchez le sol pour poser une flèche ancrée (optionnel).
 6. Au QR suivant, **Scanner** pour recaler la position ; l'itinéraire est
    recalculé. Le téléphone vibre à l'arrivée.
 7. **Quitter AR** termine le guidage.

@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-12
- * Version      : 3.0.0 (SUP'COM campus – WebGPU, multi-floor, compass, GPS)
+ * Version      : 3.1.0 (SUP'COM campus – WebGPU, multi-floor, compass, GPS)
  * Description  : Application controller and NavigationService facade: wires
  *                the QR scanner, the SUP'COM campus model and router, the
  *                WebGPU 3D view, immersive-ar guidance, compass, outdoor GPS,
@@ -24,7 +24,7 @@ import { Compass, GpsTracker, shortCardinal } from './geo.js';
 import { SurveyStore } from './survey.js';
 import { hasWebGPU } from './gpu.js';
 
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.1.0';
 const CAMPUS_URL = 'assets/campus/supcom.json';
 const WALKING_SPEED = 1.2; // m/s
 
@@ -802,9 +802,179 @@ function updateARControls(isActive) {
   startArButton.hidden = isActive;
   stopArButton.hidden = !isActive;
   document.body.classList.toggle('is-ar-session', isActive);
+  arHudElement.hidden = !isActive;
   setARView(isActive);
-  if (isActive) requestWakeLock();
-  else releaseWakeLock();
+  if (isActive) {
+    requestWakeLock();
+    arLandmarkRefresh = 0;
+    lastArState = null;
+    arInstructionText.textContent = 'Initialisation du suivi…';
+    arInstructionSub.textContent = 'Visez le sol et marchez lentement';
+  } else {
+    releaseWakeLock();
+    // Back on the map: show where the AR tracking left the user
+    if (lastArState && lastArState.position && campus) {
+      const p = lastArState.position;
+      const place = placeAt(p.level, p.x, p.y);
+      setCurrentPosition({ level: p.level, x: p.x, y: p.y, name: place ? place.name : 'Position AR', placeId: null, source: 'ar' });
+    }
+  }
+}
+
+// ===========================================================================
+// Live AR guidance HUD
+// ===========================================================================
+
+const arHudElement = $('ar-hud');
+const arInstructionElement = $('ar-instruction');
+const arInstructionText = $('ar-instruction-text');
+const arInstructionSub = $('ar-instruction-sub');
+const arTurnIcon = $('ar-turn-icon');
+const arMinimap = $('ar-minimap');
+const arCalibrationElement = $('ar-calibration');
+const arLiftButton = $('btn-ar-lift');
+const arAlignButton = $('btn-ar-align');
+const arLandmarkSelect = $('ar-landmark');
+const arQuitButton = $('btn-ar-quit');
+let lastArState = null;
+let arLandmarkRefresh = 0;
+/** @type {Map<number, Float32Array>} wall segments per floor for the mini-map */
+const minimapWalls = new Map();
+
+/**
+ * updateArHud
+ * -----------
+ * Observer of ARGuidance (≈ 6 Hz): instruction, live direction arrow,
+ * remaining distance, location, calibration and mini-map.
+ */
+function updateArHud(state) {
+  lastArState = state;
+  if (!state) return;
+  const { position } = state;
+  const place = placeAt(position.level, position.x, position.y);
+
+  if (state.arrived) {
+    arInstructionText.textContent = '🎉 Vous êtes arrivé';
+    arInstructionSub.textContent = currentDestinationId ? campus.getPlace(currentDestinationId).name : '';
+  } else if (state.awaitingLift) {
+    arInstructionText.textContent = `Prenez l’ascenseur jusqu’${state.awaitingLift.toLevel === 0 ? 'au rez-de-chaussée' : `à l’étage ${state.awaitingLift.toLevel}`}`;
+    arInstructionSub.textContent = 'À la sortie, touchez « Je suis sorti de l’ascenseur ».';
+  } else if (state.instruction) {
+    arInstructionText.textContent = state.offRoute ? 'Hors itinéraire — recalcul…' : state.instruction.text;
+    arInstructionSub.textContent = [
+      state.remaining !== undefined ? `${Math.round(state.remaining)} m restants` : null,
+      levelLabel(position.level),
+      place ? place.name : null
+    ].filter(Boolean).join(' · ');
+  }
+  arInstructionElement.classList.toggle('is-off-route', Boolean(state.offRoute));
+  arInstructionElement.classList.toggle('is-arrived', Boolean(state.arrived));
+  // The arrow turns with the user: direction of the route relative to the phone
+  if (state.relativeTurn !== undefined) arTurnIcon.style.transform = `rotate(${state.relativeTurn}deg)`;
+  arLiftButton.hidden = !state.awaitingLift;
+
+  const calibration = state.calibration;
+  const source = calibration.source === 'map' ? 'calée sur les murs' : calibration.source === 'manual' ? 'alignement manuel' : 'boussole';
+  arCalibrationElement.textContent = `Position ${source} · confiance ${Math.round(calibration.confidence * 100)} %`;
+
+  drawMiniMap(state);
+
+  // Nearby places for "Je suis à…" (refreshed every ~2 s)
+  if (performance.now() - arLandmarkRefresh > 2000) {
+    arLandmarkRefresh = performance.now();
+    const nearby = campus.getPlaces()
+      .filter((p) => p.level === position.level)
+      .map((p) => ({ p, d: Math.hypot(p.x - position.x, p.y - position.y) }))
+      .filter(({ d }) => d < 25)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 12);
+    const selected = arLandmarkSelect.value;
+    arLandmarkSelect.replaceChildren(new Option('Je suis à…', ''));
+    for (const { p, d } of nearby) arLandmarkSelect.appendChild(new Option(`${p.name} (≈ ${Math.round(d)} m)`, p.id));
+    arLandmarkSelect.value = selected && campus.getPlace(selected) ? selected : '';
+  }
+}
+
+/** Heading-up mini-map of the real walls around the user (Canvas 2D). */
+function drawMiniMap(state) {
+  const context = arMinimap.getContext('2d');
+  const size = arMinimap.width;
+  const scale = size / 2 / 18; // 18 m radius
+  const { x, y, level } = state.position;
+  context.clearRect(0, 0, size, size);
+  context.save();
+  context.beginPath();
+  context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  context.clip();
+  context.translate(size / 2, size / 2);
+  context.rotate(-state.bearing * Math.PI / 180); // heading up
+  const px = (wx) => (wx - x) * scale;
+  const py = (wy) => -(wy - y) * scale;
+
+  if (!minimapWalls.has(level)) {
+    const floor = campus.getFloor(level);
+    const segments = [];
+    for (const part of [...(floor.walls || []), ...(floor.facade || [])]) {
+      for (let i = 0; i + 3 < part.length; i += 2) segments.push(part[i], part[i + 1], part[i + 2], part[i + 3]);
+    }
+    minimapWalls.set(level, new Float32Array(segments));
+  }
+  const walls = minimapWalls.get(level);
+  context.strokeStyle = 'rgba(203, 213, 225, 0.85)';
+  context.lineWidth = 1.5;
+  context.beginPath();
+  const range = 20;
+  for (let i = 0; i < walls.length; i += 4) {
+    if (Math.abs(walls[i] - x) > range && Math.abs(walls[i + 2] - x) > range) continue;
+    if (Math.abs(walls[i + 1] - y) > range && Math.abs(walls[i + 3] - y) > range) continue;
+    context.moveTo(px(walls[i]), py(walls[i + 1]));
+    context.lineTo(px(walls[i + 2]), py(walls[i + 3]));
+  }
+  context.stroke();
+
+  if (state.ahead && state.ahead.length > 1) {
+    context.strokeStyle = '#00d2ff';
+    context.lineWidth = 4;
+    context.lineCap = 'round';
+    context.beginPath();
+    state.ahead.forEach(([ax, ay], i) => (i ? context.lineTo(px(ax), py(ay)) : context.moveTo(px(ax), py(ay))));
+    context.stroke();
+  }
+  context.restore();
+
+  // User (always at the centre, pointing up)
+  context.fillStyle = '#10b981';
+  context.beginPath();
+  context.moveTo(size / 2, size / 2 - 12);
+  context.lineTo(size / 2 + 8, size / 2 + 8);
+  context.lineTo(size / 2, size / 2 + 3);
+  context.lineTo(size / 2 - 8, size / 2 + 8);
+  context.closePath();
+  context.fill();
+  // North tick
+  const n = -state.bearing * Math.PI / 180;
+  context.fillStyle = '#f87171';
+  context.font = 'bold 20px system-ui';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('N', size / 2 + Math.sin(n) * (size / 2 - 14), size / 2 - Math.cos(n) * (size / 2 - 14));
+}
+
+/** Off route for a few seconds: new route from the tracked position. */
+function rerouteFrom(position) {
+  if (!currentDestinationId) return;
+  const route = router.findRoute({ level: position.level, x: position.x, y: position.y, maxSnap: 6 }, currentDestinationId);
+  if (!route.found) return;
+  currentRoute = route;
+  arGuide.setRoute(route);
+  showStatusToast('Itinéraire recalculé depuis votre position', 3000);
+}
+
+function handleArArrival() {
+  if ('vibrate' in navigator) {
+    try { navigator.vibrate([200, 100, 200, 100, 300]); } catch (error) { /* not supported */ }
+  }
+  showStatusToast('🎉 Vous êtes arrivé à destination', 6000);
 }
 
 function describeArError(error) {
@@ -858,7 +1028,11 @@ async function startARGuide() {
   }
 
   const minimal = arGuide.sessionMode === 'minimal';
-  const startPromise = arGuide.start(currentRoute, { level: currentPosition.level, x: currentPosition.x, y: currentPosition.y });
+  const startPromise = arGuide.start(
+    currentRoute,
+    { level: currentPosition.level, x: currentPosition.x, y: currentPosition.y },
+    campus.getPlace(currentDestinationId)
+  );
   showStatusToast(minimal
     ? 'AR (mode simplifié) : interface masquée pendant l’AR — touchez le sol pour la flèche, bouton Retour pour quitter.'
     : 'Démarrage de la session AR… tenez-vous à l’endroit du QR scanné.', minimal ? 8000 : 4000);
@@ -952,6 +1126,22 @@ function initUIEventListeners() {
   closeRouteButton.addEventListener('click', () => { hideRoutePanel(); destinationTriggerButton.focus(); });
   startArButton.addEventListener('click', startARGuide);
   stopArButton.addEventListener('click', () => arGuide && arGuide.stop());
+  arQuitButton.addEventListener('click', () => arGuide && arGuide.stop());
+  arAlignButton.addEventListener('click', () => {
+    if (arGuide && arGuide.alignToRoute()) showStatusToast('Aligné : face au trajet affiché sur la mini-carte', 3000);
+  });
+  arLiftButton.addEventListener('click', () => {
+    if (!arGuide) return;
+    arGuide.confirmLiftExit();
+    showStatusToast('Étage confirmé, guidage repris', 3000);
+  });
+  arLandmarkSelect.addEventListener('change', () => {
+    const place = campus.getPlace(arLandmarkSelect.value);
+    if (!place || !arGuide) return;
+    arGuide.snapToPlace(place);
+    arLandmarkSelect.value = '';
+    showStatusToast(`Position recalée : ${place.name}`, 3000);
+  });
   avoidStairsInput.addEventListener('change', () => {
     router.setStrategy(avoidStairsInput.checked ? new AvoidStairsStrategy() : new ShortestPathStrategy());
     distanceCacheKey = '';
@@ -1118,10 +1308,14 @@ async function init() {
   // AR on WebGPU (prepared ahead so the tap only requests the session)
   arGuide = new ARGuide({
     container: sceneContainer,
+    campus,
     overlayRoot: uiOverlayElement,
     compass,
     onStatus: (message) => showStatusToast(message, 6000),
-    onSessionState: updateARControls
+    onSessionState: updateARControls,
+    onGuidance: updateArHud,
+    onReroute: rerouteFrom,
+    onArrive: handleArArrival
   });
   arStatus = await arGuide.prepare().catch(() => ({ supported: false, reason: 'webgpu' }));
   updateArBadge();
@@ -1130,6 +1324,8 @@ async function init() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('depart')) setCurrentPlace(params.get('depart'), 'qr');
   if (params.get('destination')) selectDestination(params.get('destination'));
+  // Field tests: ?debug exposes the live AR tracking state in the console
+  if (params.has('debug')) window.__iwDebug = { get arState() { return lastArState; }, campus, router };
 
   console.log(`[Indoor Wayfinder] v${APP_VERSION} – SUP'COM campus, ${campus.getPlaces().length} places, renderer WebGPU: ${Boolean(view)}`);
 }
