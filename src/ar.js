@@ -91,9 +91,21 @@ export class ARGuide {
       this.#handleSessionEnd();
     });
 
+    // Pick a reference space the session actually grants BEFORE handing the
+    // session to Three.js. If Three.js' setSession() fails half-way, its own
+    // 'end' handler crashes (animation context is still null), so every
+    // predictable failure must happen before that call.
+    let referenceSpaceType;
+    try {
+      referenceSpaceType = await this.#pickReferenceSpaceType(this.session);
+    } catch (error) {
+      await this.#endQuietly();
+      throw error;
+    }
+
     try {
       this.renderer.xr.enabled = true;
-      this.renderer.xr.setReferenceSpaceType('local-floor');
+      this.renderer.xr.setReferenceSpaceType(referenceSpaceType);
       await this.renderer.xr.setSession(this.session);
       this.referenceSpace = this.renderer.xr.getReferenceSpace();
 
@@ -117,11 +129,7 @@ export class ARGuide {
         space: this.viewerSpace
       });
     } catch (error) {
-      try {
-        await this.session.end();
-      } catch (endError) {
-        console.warn('[ar] Could not close failed session:', endError);
-      }
+      await this.#endQuietly();
       throw error;
     }
 
@@ -177,7 +185,43 @@ export class ARGuide {
    */
   stop() {
     if (this.session) {
-      this.session.end();
+      this.session.end().catch((error) => {
+        console.warn('[ar] Session already ended:', error);
+      });
+    }
+  }
+
+  /**
+   * #pickReferenceSpaceType
+   * -----------------------
+   * Prefers 'local-floor' (y = 0 on the floor) and falls back to 'local',
+   * which every immersive session supports.
+   *
+   * @param {XRSession} session – Freshly requested AR session.
+   * @returns {Promise<string>} Reference space type usable by Three.js.
+   */
+  async #pickReferenceSpaceType(session) {
+    try {
+      await session.requestReferenceSpace('local-floor');
+      return 'local-floor';
+    } catch (error) {
+      console.warn('[ar] local-floor unavailable, using local:', error);
+      await session.requestReferenceSpace('local');
+      return 'local';
+    }
+  }
+
+  /**
+   * #endQuietly
+   * -----------
+   * Ends a session that failed to start without letting errors escape.
+   */
+  async #endQuietly() {
+    if (!this.session) return;
+    try {
+      await this.session.end();
+    } catch (endError) {
+      console.warn('[ar] Could not close failed session:', endError);
     }
   }
 
@@ -191,7 +235,7 @@ export class ARGuide {
   async #requestSession() {
     const fullOptions = {
       requiredFeatures: ['hit-test'],
-      optionalFeatures: ['dom-overlay', 'anchors'],
+      optionalFeatures: ['local-floor', 'dom-overlay', 'anchors'],
       domOverlay: { root: document.body }
     };
 
@@ -203,7 +247,8 @@ export class ARGuide {
       }
       console.warn('[ar] Full AR options rejected, retrying hit-test only:', error);
       return navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['hit-test']
+        requiredFeatures: ['hit-test'],
+        optionalFeatures: ['local-floor']
       });
     }
   }

@@ -14,7 +14,7 @@
  * ==========================================================================
  */
 
-const CACHE_NAME = 'indoor-wayfinder-v2.2.2';
+const CACHE_NAME = 'indoor-wayfinder-v2.2.3';
 const SCOPE_URL = self.registration.scope;
 
 /** Application files required to boot the shell offline. */
