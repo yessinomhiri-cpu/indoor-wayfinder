@@ -167,6 +167,10 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
     *   **Prompt ou usage principal :** Claude (Anthropic) : diagnostic de l'échec de « Guidage AR » sur Android (espace de référence `local-floor` non demandé, plantage du gestionnaire de fin de session Three.js, racine DOM overlay = `body`), correctif et messages d'erreur explicites
     *   **Axe de vérification appliqué par l'étudiant :** Lecture du code de `WebXRManager.setSession` de Three.js r160 ; simulateur WebXR (session `immersive-ar` factice imposant le geste utilisateur et les espaces de référence) : ancien code = bannière d'erreur reproduite, nouveau code = session démarrée, hit test, ancre au toucher, « Quitter AR » sans placement, repli `local` quand `local-floor` est refusé, refus de permission = message clair ; **validation sur le Samsung S23 encore requise**
 
+*   **Composant ou Shader concerné :** Correctif « requires user activation » (`src/ar.js` — `start`, `#sessionOptions`, `isUserActivationError` ; `src/main.js` — `startARGuide`)
+    *   **Prompt ou usage principal :** Claude (Anthropic) : analyse du message d'erreur relevé sur le Samsung S23 (nouvel essai `requestSession` dans le même geste), une seule requête par geste, mode simplifié au geste suivant, cause réelle affichée
+    *   **Axe de vérification appliqué par l'étudiant :** Simulateur WebXR consommant l'activation utilisateur comme Chrome : version v2.3.1 = message d'erreur du téléphone reproduit mot pour mot ; version corrigée = 1er toucher affiche la cause, 2e toucher démarre l'AR (hit test, ancre, sortie) ; configuration complète acceptée = AR au 1er toucher ; **validation sur le S23 encore requise**
+
 *   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
     *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, navigation network-first, assets cache-first), du manifeste et des icônes
     *   **Axe de vérification appliqué par l'étudiant :** Rechargement hors ligne après contrôle du SW, cache `v2.1.0`, vérification JSON du manifeste, requêtes d'icônes 200, contrôle des tailles 192/512

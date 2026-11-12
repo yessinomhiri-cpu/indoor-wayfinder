@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-11
  * Modified     : 2026-11-12
- * Version      : 2.3.1 (Sprint 4 – immersive-ar hit test + floor arrow)
+ * Version      : 2.3.2 (Sprint 4 – immersive-ar hit test + floor arrow)
  * Description  : WebXR immersive-ar controller. Starts a hit-test session,
  *                places a reticle on the real floor, anchors the navigation
  *                arrow on tap, and restores the demo scene when the session
@@ -18,6 +18,31 @@ import * as THREE from 'three';
 
 /** Reference spaces in preference order; 'local' is always granted. */
 const REFERENCE_SPACE_TYPES = ['local-floor', 'local'];
+
+/**
+ * isUserActivationError
+ * ---------------------
+ * @param {*} error – requestSession rejection.
+ * @returns {boolean} True when Chrome refused because no fresh tap was seen.
+ */
+export function isUserActivationError(error) {
+  return Boolean(error && error.name === 'SecurityError' && /activation/i.test(error.message || ''));
+}
+
+/**
+ * isConfigurationError
+ * --------------------
+ * A rejection that a simpler session configuration might avoid (not a
+ * permission refusal and not a missing tap).
+ *
+ * @param {*} error – requestSession rejection.
+ * @returns {boolean}
+ */
+function isConfigurationError(error) {
+  if (!error) return false;
+  if (error.name === 'NotAllowedError' || error.name === 'SecurityError') return false;
+  return true;
+}
 
 export class ARGuide {
   /**
@@ -61,6 +86,9 @@ export class ARGuide {
     this.anchor = null;
     this.route = [];
     this.isActive = false;
+    this.isStarting = false;
+    // 'full' = DOM overlay + anchors; 'minimal' = hit-test only (no overlay)
+    this.sessionMode = 'full';
     this.savedSceneState = null;
     this.savedVisibility = new Map();
   }
@@ -87,18 +115,47 @@ export class ARGuide {
    *
    * Must be called directly from the button's click handler: Chrome only
    * grants an immersive session while the tap's user activation is fresh,
-   * so `requestSession` is the first asynchronous step.
+   * and `requestSession` uses that activation up. So this makes exactly ONE
+   * request per tap, as its first asynchronous step. If the full
+   * configuration is rejected, the error carries `retryNextTap` and the next
+   * tap uses the minimal configuration.
    *
    * @param {string[]} route – Dijkstra path; route[0] is the current node.
    */
   async start(route) {
-    if (this.isActive || this.session) return;
+    if (this.isActive || this.session || this.isStarting) return;
     if (!navigator.xr) {
       throw new Error('WebXR n’est pas disponible sur ce navigateur');
     }
 
     this.route = route || [];
-    const session = await this.#requestSession();
+    this.isStarting = true;
+    try {
+      await this.#startSession();
+    } finally {
+      this.isStarting = false;
+    }
+  }
+
+  /**
+   * #startSession
+   * -------------
+   * Body of start(); see there.
+   */
+  async #startSession() {
+    const mode = this.sessionMode;
+    let session;
+    try {
+      session = await navigator.xr.requestSession('immersive-ar', this.#sessionOptions(mode));
+    } catch (error) {
+      if (mode === 'full' && isConfigurationError(error)) {
+        // A second request in this same tap would fail with "requires user
+        // activation"; switch configuration for the next tap instead.
+        this.sessionMode = 'minimal';
+        if (error && typeof error === 'object') error.retryNextTap = true;
+      }
+      throw error;
+    }
     this.session = session;
     session.addEventListener('end', () => {
       this.#handleSessionEnd();
@@ -156,6 +213,15 @@ export class ARGuide {
   }
 
   /**
+   * hasDomOverlay
+   * -------------
+   * @returns {boolean} True when the page UI is visible inside the session.
+   */
+  get hasDomOverlay() {
+    return Boolean(this.session && this.session.domOverlayState);
+  }
+
+  /**
    * update
    * ------
    * Called from the Three.js animation loop with the current XRFrame.
@@ -205,36 +271,31 @@ export class ARGuide {
   }
 
   /**
-   * #requestSession
+   * #sessionOptions
    * ---------------
-   * Tries DOM overlay + anchors first, then falls back to hit-test only.
+   * 'full': DOM overlay + anchors + local-floor (all optional).
+   * 'minimal': hit-test only; the page UI is not shown inside AR.
    * The overlay root is the UI layer, never document.body: the body holds
    * the opaque page background and the WebGL canvas, which would cover the
    * camera feed.
    *
-   * @returns {Promise<XRSession>} Active AR session.
+   * @param {'full'|'minimal'} mode – Configuration to request.
+   * @returns {XRSessionInit} Session options.
    */
-  async #requestSession() {
-    const fullOptions = {
+  #sessionOptions(mode) {
+    if (mode === 'minimal') {
+      return { requiredFeatures: ['hit-test'] };
+    }
+
+    const options = {
       requiredFeatures: ['hit-test'],
       optionalFeatures: ['local-floor', 'anchors']
     };
     if (this.overlayRoot) {
-      fullOptions.optionalFeatures.push('dom-overlay');
-      fullOptions.domOverlay = { root: this.overlayRoot };
+      options.optionalFeatures.push('dom-overlay');
+      options.domOverlay = { root: this.overlayRoot };
     }
-
-    try {
-      return await navigator.xr.requestSession('immersive-ar', fullOptions);
-    } catch (error) {
-      if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
-        throw error;
-      }
-      console.warn('[ar] Full AR options rejected, retrying hit-test only:', error);
-      return navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['hit-test']
-      });
-    }
+    return options;
   }
 
   /**
