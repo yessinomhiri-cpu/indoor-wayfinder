@@ -1,6 +1,6 @@
 # Design notebook — Indoor Wayfinder
 
-**Version :** 3.0.0
+**Version :** 3.1.0
 **Cahier des charges :** v1.0 — 24 octobre 2026 (périmètre élargi à la demande du superviseur : campus SUP'COM complet, plusieurs étages, boussole, GPS extérieur, rendu WebGPU)
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 
@@ -56,6 +56,7 @@ flowchart TB
         NAV[src/navigation.js<br/>CampusMap + CampusRouter Dijkstra]
         VIEW[src/view3d.js<br/>campus 3D WebGPU]
         AR[src/ar.js<br/>immersive-ar sur WebGPU]
+        GUIDE[src/ar-guidance.js<br/>localisation continue + guidage]
         GPU[src/gpu.js<br/>WebGPURenderer]
         GEO[src/geo.js<br/>Boussole + GPS]
         SURVEY[src/survey.js<br/>mode relevé]
@@ -80,6 +81,8 @@ flowchart TB
     VIEW --> GPU
     AR --> GPU
     AR --> XR
+    AR --> GUIDE
+    GUIDE --> NAV
     NAV --> DATA
     BUILD --> ARCGIS
     BUILD --> OSM
@@ -115,11 +118,13 @@ sequenceDiagram
     Main->>AR: start(route, position)
     AR->>WebXR: requestSession('immersive-ar', webgpu + hit-test)
     WebXR-->>AR: XRFrame (XRGPUBinding)
-    Compass-->>AR: cap vrai de la caméra
-    AR->>AR: décalage nord ↔ monde AR, chevrons de l'itinéraire au sol
-    Visiteur->>WebXR: toucher le sol
-    AR->>WebXR: createAnchor()
-    AR-->>Visiteur: flèche orientée vers 208° (Sud-Ouest)
+    Compass-->>AR: cap vrai de la caméra (a priori)
+    loop chaque image
+        WebXR-->>AR: pose caméra ARCore (6 DoF)
+        AR->>AR: ARGuidance : position sur le plan, recalage sur les murs
+        AR-->>Visiteur: chevrons sur 25 m, flèches de virage, HUD « Dans 6 m, tournez à gauche »
+    end
+    AR->>Main: hors itinéraire → recalcul / arrivée → vibration
 ```
 
 ## 5. Modèle de données
@@ -162,6 +167,13 @@ classDiagram
         +start(route, position)
         +stop()
     }
+    class ARGuidance {
+        +begin(start, route, startXR, yaw, heading)
+        +update(xr, yaw, time) state
+        +alignToRoute(yaw)
+        +snapTo(place, xr)
+        +setRoute(route)
+    }
     class Compass {
         +heading
         +subscribe(listener)
@@ -182,6 +194,8 @@ classDiagram
     RouteStrategy <|-- AvoidStairsStrategy
     CampusView3D --> CampusMap
     ARGuide --> Compass
+    ARGuide --> ARGuidance
+    ARGuidance --> CampusMap
     GpsTracker --> CampusMap
 ```
 
@@ -241,7 +255,8 @@ flowchart LR
 | Boussole | cap téléphone debout nord / est, téléphone à plat |
 | QR | 15 cartes décodées par l'application |
 | Vue 3D | WebGPU actif, 4 étages, sélecteur, vue Plan, toucher = position |
-| AR (simulateur) | session `webgpu` + `hit-test`, images rendues, ancre, flèche à 208°, sortie |
+| AR (simulateur) | session `webgpu` + `hit-test`, images rendues, ancre, sortie |
+| Guidage AR | 12 marches simulées (`scripts/test-guidance.mjs`) : erreur moyenne < 0,6 m malgré une boussole faussée de ±15°, escaliers, recalcul, demi-tour |
 | AR (téléphone) | Samsung S23, Chrome + ARCore + flag WebXR/WebGPU — **à valider** |
 | Hors ligne | shell, plan du campus et Three.js r187 après un premier chargement |
 

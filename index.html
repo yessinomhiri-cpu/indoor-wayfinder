@@ -6,7 +6,7 @@
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
   Modified     : 2026-11-12
-  Version      : 3.0.0 (SUP'COM campus – WebGPU 3D, multi-floor routes, compass, GPS, WebXR)
+  Version      : 3.1.0 (SUP'COM campus – WebGPU 3D, multi-floor routes, compass, GPS, WebXR)
   Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
                  a cohesive dark glassmorphism design system, accessible
                  dialogs with focus trapping, compact header with connectivity
@@ -629,8 +629,129 @@
 
     /* During immersive-ar the UI layer is the WebXR DOM overlay */
     body.is-ar-session .bottom-bar-container,
+    body.is-ar-session .route-panel,
+    body.is-ar-session .survey-panel,
     body.is-ar-session .route-steps {
+      display: none !important;
+    }
+
+    /* ==========================================================================
+       Live AR guidance HUD (src/ar.js + src/ar-guidance.js)
+       ========================================================================== */
+    .ar-hud {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: calc(64px + env(safe-area-inset-top, 0px)) var(--space-md) calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+    }
+
+    .ar-hud[hidden] {
       display: none;
+    }
+
+    .ar-instruction {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border-radius: var(--radius-lg);
+      background: rgba(4, 18, 31, 0.82);
+      border: 1px solid rgba(0, 210, 255, 0.45);
+      box-shadow: var(--shadow-lg);
+      pointer-events: auto;
+    }
+
+    .ar-instruction.is-off-route {
+      border-color: rgba(245, 158, 11, 0.8);
+    }
+
+    .ar-instruction.is-arrived {
+      border-color: rgba(16, 185, 129, 0.9);
+    }
+
+    .ar-turn {
+      flex-shrink: 0;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(0, 210, 255, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ar-turn svg {
+      width: 42px;
+      height: 42px;
+      color: var(--color-accent-primary);
+      transition: transform 90ms linear;
+    }
+
+    .ar-instruction-text {
+      font-size: var(--font-size-md);
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 1.25;
+    }
+
+    .ar-instruction-sub {
+      margin-top: 2px;
+      font-size: var(--font-size-xs);
+      color: var(--color-text-secondary);
+    }
+
+    .ar-bottom {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: var(--space-sm);
+    }
+
+    .ar-minimap {
+      width: 132px;
+      height: 132px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 210, 255, 0.5);
+      background: rgba(4, 12, 24, 0.78);
+      pointer-events: auto;
+    }
+
+    .ar-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      pointer-events: auto;
+    }
+
+    .ar-actions .tool-btn,
+    .ar-actions select {
+      min-height: 40px;
+      background: rgba(4, 18, 31, 0.85);
+      color: #ffffff;
+    }
+
+    .ar-actions select {
+      max-width: 52vw;
+      border: 1px solid var(--color-border-glass);
+      border-radius: var(--radius-full);
+      padding: 0 0.7rem;
+      font-family: var(--font-family-system);
+      font-size: var(--font-size-xs);
+    }
+
+    .ar-actions [hidden] {
+      display: none;
+    }
+
+    .ar-calibration {
+      font-size: 10px;
+      color: var(--color-text-secondary);
+      text-align: right;
     }
 
     body.is-ar-session #status-toast {
@@ -1556,6 +1677,31 @@
         <span id="status-message">Démarrage…</span>
       </div>
     </div>
+
+    <!-- Live AR guidance HUD (visible inside the immersive-ar session) -->
+    <section id="ar-hud" class="ar-hud" aria-live="polite" hidden>
+      <div id="ar-instruction" class="ar-instruction">
+        <div class="ar-turn" aria-hidden="true">
+          <svg id="ar-turn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 20 20 12 15.5 4 20Z"/></svg>
+        </div>
+        <div>
+          <div id="ar-instruction-text" class="ar-instruction-text">Initialisation du suivi…</div>
+          <div id="ar-instruction-sub" class="ar-instruction-sub">Visez le sol et marchez lentement</div>
+        </div>
+      </div>
+      <div class="ar-bottom">
+        <canvas id="ar-minimap" class="ar-minimap" width="264" height="264" aria-label="Mini-carte orientée"></canvas>
+        <div class="ar-actions">
+          <div id="ar-calibration" class="ar-calibration">—</div>
+          <button id="btn-ar-lift" class="tool-btn" type="button" hidden>Je suis sorti de l’ascenseur</button>
+          <button id="btn-ar-align" class="tool-btn" type="button">Aligner sur le trajet</button>
+          <select id="ar-landmark" aria-label="Recaler la position sur un lieu proche">
+            <option value="">Je suis à…</option>
+          </select>
+          <button id="btn-ar-quit" class="tool-btn" type="button">Quitter AR</button>
+        </div>
+      </div>
+    </section>
 
     <!-- Survey mode: name rooms, record missing passages -->
     <section id="survey-panel" class="survey-panel" aria-labelledby="survey-title" hidden>
