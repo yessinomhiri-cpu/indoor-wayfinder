@@ -1747,7 +1747,7 @@ function init() {
     startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh);
 
     // 7. Display initial discrete status toast
-    showStatusToast('Plan intérieur prêt ✓', 4000);
+    showStatusToast('Plan intérieur prêt ✓ · v2.2.3', 6000);
 
     arGuide.isSupported().then((supported) => {
       if (!arSupportBadgeElement) return;
@@ -1757,7 +1757,7 @@ function init() {
       arSupportBadgeElement.classList.toggle('is-ready', supported);
     });
 
-    console.log('[Indoor Wayfinder] v2.2.2 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    console.log('[Indoor Wayfinder] v2.2.3 – Scene & UI initialized. Three.js r' + THREE.REVISION);
   } catch (error) {
     console.error('[Indoor Wayfinder] 3D initialization failed:', error);
     showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
