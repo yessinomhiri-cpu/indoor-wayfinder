@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-11
- * Modified     : 2026-11-11
- * Version      : 2.2.2 (Sprint 4 – immersive-ar hit test + floor arrow)
+ * Modified     : 2026-11-12
+ * Version      : 2.3.1 (Sprint 4 – immersive-ar hit test + floor arrow)
  * Description  : WebXR immersive-ar controller. Starts a hit-test session,
  *                places a reticle on the real floor, anchors the navigation
  *                arrow on tap, and restores the demo scene when the session
@@ -15,6 +15,9 @@
  */
 
 import * as THREE from 'three';
+
+/** Reference spaces in preference order; 'local' is always granted. */
+const REFERENCE_SPACE_TYPES = ['local-floor', 'local'];
 
 export class ARGuide {
   /**
@@ -27,8 +30,11 @@ export class ARGuide {
    * @param {Function} options.getDirection – (fromId, toId) => {dx, dy}.
    * @param {Function} options.onStatus – User-facing status callback.
    * @param {Function} options.onSessionState – (isActive) callback.
+   * @param {HTMLElement} [options.overlayRoot] – UI kept above the camera
+   *        (WebXR DOM overlay). Must not contain the WebGL canvas.
+   * @param {Function} [options.getNodeName] – (nodeId) => display name.
    */
-  constructor({ renderer, scene, camera, arrowFactory, demoObjects, getDirection, onStatus, onSessionState }) {
+  constructor({ renderer, scene, camera, arrowFactory, demoObjects, getDirection, onStatus, onSessionState, overlayRoot, getNodeName }) {
     this.renderer = renderer;
     this.scene = scene;
     this.camera = camera;
@@ -37,6 +43,13 @@ export class ARGuide {
     this.getDirection = getDirection;
     this.onStatus = onStatus || (() => {});
     this.onSessionState = onSessionState || (() => {});
+    this.overlayRoot = overlayRoot || null;
+    this.getNodeName = getNodeName || null;
+
+    // Taps on overlay buttons (e.g. "Quitter AR") must not place the arrow
+    if (this.overlayRoot) {
+      this.overlayRoot.addEventListener('beforexrselect', (event) => event.preventDefault());
+    }
 
     this.session = null;
     this.hitTestSource = null;
@@ -72,30 +85,31 @@ export class ARGuide {
    * Requests an immersive-ar session with hit testing, attaches it to the
    * Three.js renderer and prepares the reticle + arrow.
    *
+   * Must be called directly from the button's click handler: Chrome only
+   * grants an immersive session while the tap's user activation is fresh,
+   * so `requestSession` is the first asynchronous step.
+   *
    * @param {string[]} route – Dijkstra path; route[0] is the current node.
    */
   async start(route) {
-    if (this.isActive) return;
+    if (this.isActive || this.session) return;
     if (!navigator.xr) {
       throw new Error('WebXR n’est pas disponible sur ce navigateur');
     }
 
-    const supported = await this.isSupported();
-    if (!supported) {
-      throw new Error('La session immersive-ar n’est pas supportée');
-    }
-
     this.route = route || [];
-    this.session = await this.#requestSession();
-    this.session.addEventListener('end', () => {
+    const session = await this.#requestSession();
+    this.session = session;
+    session.addEventListener('end', () => {
       this.#handleSessionEnd();
     });
 
     try {
-      this.renderer.xr.enabled = true;
-      this.renderer.xr.setReferenceSpaceType('local-floor');
-      await this.renderer.xr.setSession(this.session);
-      this.referenceSpace = this.renderer.xr.getReferenceSpace();
+      // Pick a reference space the session really grants BEFORE handing the
+      // session to Three.js. Three defaults to 'local-floor'; if that space
+      // is refused inside setSession, ending the half-initialised session
+      // crashes Three's own end handler.
+      const referenceSpaceType = await this.#pickReferenceSpaceType(session);
 
       this.savedSceneState = {
         background: this.scene.background,
@@ -105,6 +119,11 @@ export class ARGuide {
       this.scene.fog = null;
       this.#hideDemoObjects(true);
 
+      this.renderer.xr.enabled = true;
+      this.renderer.xr.setReferenceSpaceType(referenceSpaceType);
+      await this.renderer.xr.setSession(session);
+      this.referenceSpace = this.renderer.xr.getReferenceSpace();
+
       this.reticle = this.#createReticle();
       this.scene.add(this.reticle);
 
@@ -112,26 +131,28 @@ export class ARGuide {
       this.arrow.visible = false;
       this.scene.add(this.arrow);
 
-      this.viewerSpace = await this.session.requestReferenceSpace('viewer');
-      this.hitTestSource = await this.session.requestHitTestSource({
+      this.viewerSpace = await session.requestReferenceSpace('viewer');
+      this.hitTestSource = await session.requestHitTestSource({
         space: this.viewerSpace
       });
     } catch (error) {
-      try {
-        await this.session.end();
-      } catch (endError) {
-        console.warn('[ar] Could not close failed session:', endError);
+      if (this.session === session) {
+        session.end().catch((endError) => {
+          console.warn('[ar] Could not close failed session:', endError);
+        });
       }
       throw error;
     }
 
-    this.session.addEventListener('select', () => {
-      this.#placeArrow();
+    session.addEventListener('select', () => {
+      this.#placeArrow().catch((error) => {
+        console.warn('[ar] Arrow placement failed:', error);
+      });
     });
 
     this.isActive = true;
     this.onSessionState(true);
-    this.onStatus('AR active : visez le sol, puis touchez pour placer la flèche.');
+    this.onStatus(`AR active ${this.#describeNextStep()}: visez le sol, puis touchez pour placer la flèche.`);
   }
 
   /**
@@ -177,7 +198,9 @@ export class ARGuide {
    */
   stop() {
     if (this.session) {
-      this.session.end();
+      this.session.end().catch((error) => {
+        console.warn('[ar] Session end failed:', error);
+      });
     }
   }
 
@@ -185,15 +208,21 @@ export class ARGuide {
    * #requestSession
    * ---------------
    * Tries DOM overlay + anchors first, then falls back to hit-test only.
+   * The overlay root is the UI layer, never document.body: the body holds
+   * the opaque page background and the WebGL canvas, which would cover the
+   * camera feed.
    *
    * @returns {Promise<XRSession>} Active AR session.
    */
   async #requestSession() {
     const fullOptions = {
       requiredFeatures: ['hit-test'],
-      optionalFeatures: ['dom-overlay', 'anchors'],
-      domOverlay: { root: document.body }
+      optionalFeatures: ['local-floor', 'anchors']
     };
+    if (this.overlayRoot) {
+      fullOptions.optionalFeatures.push('dom-overlay');
+      fullOptions.domOverlay = { root: this.overlayRoot };
+    }
 
     try {
       return await navigator.xr.requestSession('immersive-ar', fullOptions);
@@ -206,6 +235,36 @@ export class ARGuide {
         requiredFeatures: ['hit-test']
       });
     }
+  }
+
+  /**
+   * #pickReferenceSpaceType
+   * -----------------------
+   * @param {XRSession} session – New AR session.
+   * @returns {Promise<string>} First reference space type the session grants.
+   */
+  async #pickReferenceSpaceType(session) {
+    let lastError = null;
+    for (const type of REFERENCE_SPACE_TYPES) {
+      try {
+        await session.requestReferenceSpace(type);
+        return type;
+      } catch (error) {
+        lastError = error;
+        console.warn(`[ar] Reference space '${type}' refused:`, error);
+      }
+    }
+    throw lastError || new Error('Aucun espace de référence AR disponible');
+  }
+
+  /**
+   * #describeNextStep
+   * -----------------
+   * @returns {string} " (prochaine étape : Hall)" or an empty string.
+   */
+  #describeNextStep() {
+    if (!this.route || this.route.length < 2 || !this.getNodeName) return '';
+    return `(prochaine étape : ${this.getNodeName(this.route[1])}) `;
   }
 
   /**
@@ -257,7 +316,7 @@ export class ARGuide {
       console.warn('[ar] XRAnchor unavailable; keeping the hit pose:', error);
     }
 
-    this.onStatus('Flèche placée. Suivez la direction indiquée.');
+    this.onStatus(`Flèche placée ${this.#describeNextStep()}— suivez la direction indiquée.`);
   }
 
   /**
@@ -329,6 +388,7 @@ export class ARGuide {
    * Cleans up XR resources and restores the normal Three.js scene.
    */
   #handleSessionEnd() {
+    const wasActive = this.isActive;
     this.isActive = false;
 
     if (this.hitTestSource) {
@@ -369,6 +429,7 @@ export class ARGuide {
     }
     this.#hideDemoObjects(false);
     this.onSessionState(false);
-    this.onStatus('Session AR terminée.');
+    // A session that failed during setup keeps the caller's error message
+    if (wasActive) this.onStatus('Session AR terminée.');
   }
 }

@@ -6,7 +6,7 @@
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
   Modified     : 2026-11-11
-  Version      : 2.3.0 (Sprint 4 – QR scan, Dijkstra route, 3D view, WebXR)
+  Version      : 2.3.1 (Sprint 4 – QR scan, Dijkstra route, 3D view, WebXR)
   Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
                  a cohesive dark glassmorphism design system, accessible
                  dialogs with focus trapping, compact header with connectivity
@@ -524,6 +524,16 @@
       opacity: 1;
       transform: translateY(0);
       transition: opacity var(--transition-normal), transform var(--transition-normal);
+    }
+
+    /* During immersive-ar the UI layer is the WebXR DOM overlay */
+    body.is-ar-session .bottom-bar-container,
+    body.is-ar-session .route-steps {
+      display: none;
+    }
+
+    body.is-ar-session #status-toast {
+      border-radius: var(--radius-lg);
     }
 
     #status-toast.toast-hidden {

@@ -3,6 +3,34 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.1] - 2026-11-12
+
+### Fixed
+
+- **Guidage AR failed on Android.** Three.js requests the `local-floor`
+  reference space inside `renderer.xr.setSession()`, but the session never
+  asked for that feature. When it was refused, ending the half-initialised
+  session crashed Three's own end handler (`Cannot read properties of null
+  (reading 'cancelAnimationFrame')`) and the app showed the error banner.
+  `ar.js` now requests `local-floor` as an optional feature and checks the
+  reference space *before* `setSession`, falling back to `local`.
+- The WebXR DOM overlay root is now the UI layer (`#ui-overlay`) instead of
+  `document.body`, whose opaque background and WebGL canvas could hide the
+  camera feed.
+- `requestSession()` is the first asynchronous step after the tap, so Chrome
+  still sees the user gesture.
+- Taps on overlay buttons (e.g. **Quitter AR**) no longer place the arrow
+  (`beforexrselect`); rejected `session.end()` / arrow placement promises are
+  handled.
+
+### Changed
+
+- AR failures show the real reason (permission refused, ARCore/Chrome not
+  supported, …) and fall back to the 3D route view instead of a generic error.
+- During AR the scanner/destination bar is hidden and the route panel is
+  compact; the status line names the next step of the route.
+- Cache bumped to `v2.3.1`.
+
 ## [2.3.0] - 2026-11-12
 
 The destination is now shown in real 3D on every phone, not only through

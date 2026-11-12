@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-12
- * Version      : 2.3.0 (Sprint 4 – routing, 3D route view + immersive AR)
+ * Version      : 2.3.1 (Sprint 4 – routing, 3D route view + immersive AR)
  * Description  : Main application controller. Initializes the Three.js 3D
  *                scene (rotating cube with visible edges, ground depth grid
  *                with fog, radial ground glow, ambient + directional lights,
@@ -1547,13 +1547,44 @@ function updateRouteForCurrentDestination() {
 function updateARControls(isActive) {
   if (startArButton) startArButton.hidden = isActive;
   if (stopArButton) stopArButton.hidden = !isActive;
+  // Scanner/destination bar is hidden in AR: the camera belongs to WebXR
+  document.body.classList.toggle('is-ar-session', isActive);
   setARView(isActive);
+}
+
+/**
+ * describeArError
+ * ---------------
+ * Turns a WebXR failure into a readable, specific message, so a failure on
+ * a phone can be diagnosed without a debugger.
+ *
+ * @param {Error|DOMException} error – Failure from requestSession/setSession.
+ * @returns {string} User-facing message.
+ */
+function describeArError(error) {
+  const name = error && error.name ? error.name : 'Error';
+  const detail = error && error.message ? error.message : String(error);
+
+  switch (name) {
+    case 'NotAllowedError':
+      return 'AR refusée : autorisez la caméra pour ce site dans Chrome, puis réessayez.';
+    case 'SecurityError':
+      return `AR bloquée par le navigateur (HTTPS / geste requis) — ${detail}`;
+    case 'NotSupportedError':
+      return `AR non supportée ici (ARCore à jour ? Chrome ?) — ${detail}`;
+    case 'InvalidStateError':
+      return `Une session AR est déjà en cours — ${detail}`;
+    default:
+      return `Erreur AR (${name}) — ${detail}`;
+  }
 }
 
 /**
  * startARGuide
  * ------------
  * Starts the immersive-ar arrow for the current route, or stops it.
+ * When support is already known, the session is requested synchronously in
+ * the tap handler so Chrome still sees the user gesture.
  */
 async function startARGuide() {
   if (arGuide && arGuide.isActive) {
@@ -1565,7 +1596,8 @@ async function startARGuide() {
     return;
   }
 
-  const supported = arGuide ? await arGuide.isSupported() : false;
+  // Only re-check when the startup check has not confirmed support yet
+  const supported = isArSupported || (arGuide ? await arGuide.isSupported() : false);
   if (!supported) {
     // No immersive-ar here: show the same route on the 3D floor model.
     if (setMapViewMode('3d')) {
@@ -1574,16 +1606,17 @@ async function startARGuide() {
     return;
   }
 
+  const startPromise = arGuide.start(currentRoutePath);
   showStatusToast('Démarrage de la session AR…', 3000);
   setARView(true);
 
   try {
-    await arGuide.start(currentRoutePath);
+    await startPromise;
   } catch (error) {
     console.error('[main] AR session failed:', error);
-    setARView(false);
+    updateARControls(false);
     setMapViewMode('3d');
-    showStatusToast('Impossible de démarrer la session AR — itinéraire affiché en 3D', 5000);
+    showStatusToast(describeArError(error), 12000);
   }
 }
 
@@ -1934,7 +1967,9 @@ function init() {
       demoObjects: [cubeGroup, groundShadowMesh, gridHelper],
       getDirection: (fromId, toId) => buildingGraph.getDirectionVector(fromId, toId),
       onStatus: (message) => showStatusToast(message, 5000),
-      onSessionState: updateARControls
+      onSessionState: updateARControls,
+      overlayRoot: uiOverlayElement,
+      getNodeName: (nodeId) => buildingGraph.getNode(nodeId)?.name || nodeId
     });
 
     // 5. React to viewport resizing & orientation changes
@@ -1970,7 +2005,7 @@ function init() {
       arSupportBadgeElement.classList.toggle('is-ready', supported);
     });
 
-    console.log('[Indoor Wayfinder] v2.3.0 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    console.log('[Indoor Wayfinder] v2.3.1 – Scene & UI initialized. Three.js r' + THREE.REVISION);
   } catch (error) {
     console.error('[Indoor Wayfinder] 3D initialization failed:', error);
     showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
