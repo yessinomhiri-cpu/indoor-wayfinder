@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-11
- * Version      : 2.2.0 (Sprint 2/3 – QR camera reader)
+ * Version      : 2.2.1 (Sprint 2/3 – QR camera reader)
  * Description  : Reads QR codes from the device camera. Uses the native
  *                BarcodeDetector API when available (Chrome Android 83+),
  *                and falls back to the jsQR library loaded from jsDelivr.
