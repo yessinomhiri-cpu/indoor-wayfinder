@@ -5,11 +5,11 @@
   Team         : SUP'COM SIA – Indoor Wayfinder
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-06
-  Modified     : 2026-11-06
-  Version      : 1.0.0
-  Description  : Printable test board containing all QR codes matching
-                 the nodes of SUP'COM Bâtiment A (assets/building.json).
-                 Used to test Week 2 ("Vous êtes ici") on phone or desktop.
+  Modified     : 2026-11-12
+  Version      : 3.0.0
+  Description  : Printable QR boards for the real SUP'COM building: one QR
+                 per place of assets/campus/supcom.json (official places,
+                 stairs, lifts and every detected room), filterable by floor.
   ==========================================================================
 -->
 <!DOCTYPE html>
@@ -17,7 +17,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Indoor Wayfinder – Planches de QR Codes de Test</title>
+  <title>Indoor Wayfinder – QR codes SUP'COM</title>
   <style>
     *, *::before, *::after {
       margin: 0;
@@ -155,57 +155,65 @@
 <body>
 
   <header>
-    <h1>🧭 Indoor Wayfinder – QR Codes de Test (Bâtiment A)</h1>
-    <p>Chaque QR code encode l'identifiant exact d'un nœud défini dans <code>assets/building.json</code>.</p>
+    <h1>🧭 Indoor Wayfinder – QR codes SUP'COM</h1>
+    <p>Chaque QR encode l'identifiant d'un lieu de <code>assets/campus/supcom.json</code> (plans SUP'COM, 4 niveaux).
+       Collez-le sur le mur au point indiqué : le scan place l'utilisateur à cet endroit.</p>
     <div class="instructions">
-      <strong>Comment tester la Semaine 2 :</strong>
-      <ol style="margin-left: 1.5rem; margin-top: 0.4rem;">
-        <li>Ouvrez l'application Indoor Wayfinder sur votre téléphone ou émulateur.</li>
-        <li>Cliquez sur <strong>« 📷 Scanner »</strong> et acceptez l'accès caméra.</li>
-        <li>Pointez vers l'un des QR codes ci-dessous (sur écran ou imprimé).</li>
-        <li>L'application affichera instantanément <strong>« 📍 Vous êtes ici : [Nom du lieu] »</strong>.</li>
-      </ol>
+      <label>Niveau :
+        <select id="level-filter">
+          <option value="official">Lieux principaux, escaliers, ascenseurs</option>
+          <option value="0">Rez-de-chaussée — toutes les salles</option>
+          <option value="1">Étage 1 — toutes les salles</option>
+          <option value="2">Étage 2 — toutes les salles</option>
+          <option value="3">Étage 3 — toutes les salles</option>
+        </select>
+      </label>
     </div>
     <button class="print-btn" onclick="window.print()">🖨️ Imprimer la planche</button>
   </header>
 
-  <main class="grid" id="qr-grid">
-    <!-- Generated dynamically below -->
-  </main>
+  <main class="grid" id="qr-grid"></main>
 
   <script>
-    // List of nodes matching assets/building.json
-    const nodes = [
-      { id: "ENTREE",        name: "Entrée principale",    x: 0,   y: 0   },
-      { id: "HALL",          name: "Hall principal",        x: 10,  y: 0   },
-      { id: "COULOIR_EST",   name: "Couloir Est",           x: 20,  y: 0   },
-      { id: "COULOIR_SUD",   name: "Couloir Sud",           x: 10,  y: -12 },
-      { id: "COULOIR_OUEST", name: "Couloir Ouest",         x: 10,  y: -24 },
-      { id: "SALLE_B12",     name: "Salle B12",             x: 20,  y: -6  },
-      { id: "SALLE_B14",     name: "Salle B14",             x: 20,  y: -12 },
-      { id: "SALLE_B15",     name: "Salle B15",             x: 20,  y: -24 },
-      { id: "LAB_INFO",      name: "Labo Informatique",     x: 30,  y: 0   },
-      { id: "ADMIN",         name: "Administration",        x: 10,  y: -34 },
-      { id: "BIBLIO",        name: "Bibliothèque",          x: 20,  y: -34 },
-      { id: "AMPHI_A",       name: "Amphithéâtre A",        x: 10,  y: -44 }
-    ];
-
     const container = document.getElementById('qr-grid');
+    const filter = document.getElementById('level-filter');
+    const levelName = (level) => (level === 0 ? 'RDC' : `Étage ${level}`);
+    let places = [];
 
-    nodes.forEach(node => {
-      // Using QuickChart API for crisp high-resolution QR rendering
-      const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(node.id)}&size=200&margin=1`;
+    function render() {
+      container.replaceChildren();
+      const value = filter.value;
+      const list = places.filter((p) => value === 'official'
+        ? (p.official || p.kind === 'stairs' || p.kind === 'lift')
+        : p.level === Number(value));
+      for (const place of list) {
+        // QuickChart renders the QR image (see ATTRIBUTION.md)
+        const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(place.id)}&size=200&margin=1`;
+        const card = document.createElement('div');
+        card.className = 'card';
+        const title = document.createElement('h3');
+        title.textContent = place.name;
+        const id = document.createElement('div');
+        id.className = 'node-id';
+        id.textContent = `ID : ${place.id}`;
+        const img = document.createElement('img');
+        img.className = 'qr-image';
+        img.src = qrUrl;
+        img.alt = `QR code ${place.id}`;
+        img.loading = 'lazy';
+        const where = document.createElement('div');
+        where.className = 'coords';
+        where.textContent = `${place.block && place.block !== 'H' ? 'Bloc ' + place.block : 'Hall'} · ${levelName(place.level)} · (${place.x.toFixed(1)} m E, ${place.y.toFixed(1)} m N de l'entrée)`;
+        card.append(title, id, img, where);
+        container.appendChild(card);
+      }
+    }
 
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.innerHTML = `
-        <h3>${node.name}</h3>
-        <div class="node-id">ID: ${node.id}</div>
-        <img class="qr-image" src="${qrUrl}" alt="QR Code ${node.id}" loading="lazy" />
-        <div class="coords">Coordonnées plan: (${node.x}, ${node.y})</div>
-      `;
-      container.appendChild(card);
-    });
+    fetch('../assets/campus/supcom.json')
+      .then((response) => response.json())
+      .then((campus) => { places = campus.places; render(); })
+      .catch(() => { container.textContent = 'Plan du campus introuvable.'; });
+    filter.addEventListener('change', render);
   </script>
 
 </body>

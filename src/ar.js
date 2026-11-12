@@ -6,18 +6,24 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-11
  * Modified     : 2026-11-12
- * Version      : 2.3.2 (Sprint 4 – immersive-ar hit test + floor arrow)
- * Description  : WebXR immersive-ar controller. Starts a hit-test session,
- *                places a reticle on the real floor, anchors the navigation
- *                arrow on tap, and restores the demo scene when the session
- *                ends. Three.js renders; WebXR provides the tracking.
+ * Version      : 3.0.0 (immersive-ar on WebGPU + compass-aligned route)
+ * Description  : WebXR immersive-ar controller rendered with Three.js
+ *                WebGPURenderer (session feature 'webgpu', XRGPUBinding).
+ *                Hit testing places a reticle on the real floor; a tap
+ *                anchors the navigation arrow (XRAnchor). The compass gives
+ *                the offset between the AR world and true north, so the arrow
+ *                and the floor chevrons follow the real direction of the
+ *                route computed on the SUP'COM plan.
  * ==========================================================================
  */
 
 import * as THREE from 'three';
+import { createWebGPURenderer, hasWebXRWebGPUBinding } from './gpu.js';
+import { bearingOf } from './navigation.js';
 
 /** Reference spaces in preference order; 'local' is always granted. */
 const REFERENCE_SPACE_TYPES = ['local-floor', 'local'];
+const DEG = Math.PI / 180;
 
 /**
  * isUserActivationError
@@ -29,106 +35,110 @@ export function isUserActivationError(error) {
   return Boolean(error && error.name === 'SecurityError' && /activation/i.test(error.message || ''));
 }
 
-/**
- * isConfigurationError
- * --------------------
- * A rejection that a simpler session configuration might avoid (not a
- * permission refusal and not a missing tap).
- *
- * @param {*} error – requestSession rejection.
- * @returns {boolean}
- */
+/** A rejection that a simpler configuration might avoid. */
 function isConfigurationError(error) {
-  if (!error) return false;
-  if (error.name === 'NotAllowedError' || error.name === 'SecurityError') return false;
-  return true;
+  return Boolean(error) && error.name !== 'NotAllowedError' && error.name !== 'SecurityError';
 }
 
 export class ARGuide {
   /**
    * @param {Object} options
-   * @param {THREE.WebGLRenderer} options.renderer
-   * @param {THREE.Scene} options.scene
-   * @param {THREE.Camera} options.camera
-   * @param {Function} options.arrowFactory – Returns the THREE.Group arrow.
-   * @param {THREE.Object3D[]} options.demoObjects – Cube, grid and glow to hide.
-   * @param {Function} options.getDirection – (fromId, toId) => {dx, dy}.
-   * @param {Function} options.onStatus – User-facing status callback.
-   * @param {Function} options.onSessionState – (isActive) callback.
-   * @param {HTMLElement} [options.overlayRoot] – UI kept above the camera
-   *        (WebXR DOM overlay). Must not contain the WebGL canvas.
-   * @param {Function} [options.getNodeName] – (nodeId) => display name.
+   * @param {HTMLElement} options.container – Host of the AR canvas.
+   * @param {HTMLElement} [options.overlayRoot] – UI kept above the camera.
+   * @param {import('./geo.js').Compass} [options.compass] – Heading source.
+   * @param {Function} [options.onStatus] – User-facing status callback.
+   * @param {Function} [options.onSessionState] – (isActive) callback.
    */
-  constructor({ renderer, scene, camera, arrowFactory, demoObjects, getDirection, onStatus, onSessionState, overlayRoot, getNodeName }) {
-    this.renderer = renderer;
-    this.scene = scene;
-    this.camera = camera;
-    this.arrowFactory = arrowFactory;
-    this.demoObjects = demoObjects || [];
-    this.getDirection = getDirection;
+  constructor({ container, overlayRoot, compass, onStatus, onSessionState }) {
+    this.container = container;
+    this.overlayRoot = overlayRoot || null;
+    this.compass = compass || null;
     this.onStatus = onStatus || (() => {});
     this.onSessionState = onSessionState || (() => {});
-    this.overlayRoot = overlayRoot || null;
-    this.getNodeName = getNodeName || null;
 
-    // Taps on overlay buttons (e.g. "Quitter AR") must not place the arrow
-    if (this.overlayRoot) {
-      this.overlayRoot.addEventListener('beforexrselect', (event) => event.preventDefault());
-    }
+    this.renderer = null;
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 1.6));
 
     this.session = null;
+    this.isActive = false;
+    this.isStarting = false;
+    this.sessionMode = 'full';
     this.hitTestSource = null;
-    this.referenceSpace = null;
     this.viewerSpace = null;
     this.lastHit = null;
     this.reticle = null;
     this.arrow = null;
     this.anchor = null;
-    this.route = [];
-    this.isActive = false;
-    this.isStarting = false;
-    // 'full' = DOM overlay + anchors; 'minimal' = hit-test only (no overlay)
-    this.sessionMode = 'full';
-    this.savedSceneState = null;
-    this.savedVisibility = new Map();
-  }
+    this.trail = null;          // campus-aligned group of floor chevrons
+    this.floorY = null;
+    this.startXR = null;        // XR position of the start point
+    this.northOffset = null;    // radians: XR yaw ↔ true north
+    this.northSamples = { x: 0, y: 0, n: 0 };
+    this.route = null;
+    this.startPoint = null;          // {x, y, level} campus position of the user
 
-  /**
-   * isSupported
-   * -----------
-   * @returns {Promise<boolean>} True when immersive-ar can start.
-   */
-  async isSupported() {
-    if (!navigator.xr) return false;
-    try {
-      return await navigator.xr.isSessionSupported('immersive-ar');
-    } catch (error) {
-      return false;
+    if (this.overlayRoot) {
+      // Taps on overlay buttons (e.g. "Quitter AR") must not place the arrow
+      this.overlayRoot.addEventListener('beforexrselect', (event) => event.preventDefault());
     }
   }
+
+  // ===========================================================================
+  // Capabilities
+  // ===========================================================================
+
+  /**
+   * prepare
+   * -------
+   * Creates the XR-compatible WebGPU renderer ahead of time: requesting the
+   * session must stay the first asynchronous step of the tap.
+   *
+   * @returns {Promise<{supported:boolean, reason:string|null}>}
+   */
+  async prepare() {
+    if (!navigator.xr) return { supported: false, reason: 'webxr' };
+    let arSupported = false;
+    try {
+      arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+    } catch (error) {
+      arSupported = false;
+    }
+    if (!arSupported) return { supported: false, reason: 'immersive-ar' };
+    if (!hasWebXRWebGPUBinding()) return { supported: false, reason: 'webgpu-binding' };
+
+    if (!this.renderer) {
+      this.renderer = await createWebGPURenderer({ xr: true });
+      if (!this.renderer) return { supported: false, reason: 'webgpu' };
+      this.renderer.domElement.style.display = 'block';
+      this.container.appendChild(this.renderer.domElement);
+      this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    }
+    return { supported: true, reason: null };
+  }
+
+  // ===========================================================================
+  // Session
+  // ===========================================================================
 
   /**
    * start
    * -----
-   * Requests an immersive-ar session with hit testing, attaches it to the
-   * Three.js renderer and prepares the reticle + arrow.
+   * Exactly ONE requestSession() per tap, as the first asynchronous step
+   * (Chrome uses up the tap's activation). If the full configuration is
+   * rejected, the error carries `retryNextTap` and the next tap uses the
+   * minimal one.
    *
-   * Must be called directly from the button's click handler: Chrome only
-   * grants an immersive session while the tap's user activation is fresh,
-   * and `requestSession` uses that activation up. So this makes exactly ONE
-   * request per tap, as its first asynchronous step. If the full
-   * configuration is rejected, the error carries `retryNextTap` and the next
-   * tap uses the minimal configuration.
-   *
-   * @param {string[]} route – Dijkstra path; route[0] is the current node.
+   * @param {Object} route – CampusRouter result.
+   * @param {{x:number,y:number,level:number}} start – Where the user stands.
    */
-  async start(route) {
+  async start(route, start) {
     if (this.isActive || this.session || this.isStarting) return;
-    if (!navigator.xr) {
-      throw new Error('WebXR n’est pas disponible sur ce navigateur');
-    }
+    if (!navigator.xr || !this.renderer) throw new Error('Session AR non préparée');
 
-    this.route = route || [];
+    this.route = route;
+    this.startPoint = start;
     this.isStarting = true;
     try {
       await this.#startSession();
@@ -137,11 +147,6 @@ export class ARGuide {
     }
   }
 
-  /**
-   * #startSession
-   * -------------
-   * Body of start(); see there.
-   */
   async #startSession() {
     const mode = this.sessionMode;
     let session;
@@ -149,148 +154,73 @@ export class ARGuide {
       session = await navigator.xr.requestSession('immersive-ar', this.#sessionOptions(mode));
     } catch (error) {
       if (mode === 'full' && isConfigurationError(error)) {
-        // A second request in this same tap would fail with "requires user
-        // activation"; switch configuration for the next tap instead.
         this.sessionMode = 'minimal';
         if (error && typeof error === 'object') error.retryNextTap = true;
       }
       throw error;
     }
     this.session = session;
-    session.addEventListener('end', () => {
-      this.#handleSessionEnd();
-    });
+    session.addEventListener('end', () => this.#handleSessionEnd());
 
     try {
-      // Pick a reference space the session really grants BEFORE handing the
-      // session to Three.js. Three defaults to 'local-floor'; if that space
-      // is refused inside setSession, ending the half-initialised session
-      // crashes Three's own end handler.
       const referenceSpaceType = await this.#pickReferenceSpaceType(session);
-
-      this.savedSceneState = {
-        background: this.scene.background,
-        fog: this.scene.fog
-      };
-      this.scene.background = null;
-      this.scene.fog = null;
-      this.#hideDemoObjects(true);
-
-      this.renderer.xr.enabled = true;
+      this.northOffset = null;
+      this.northSamples = { x: 0, y: 0, n: 0 };
+      this.startXR = null;
+      this.floorY = null;
+      // Three.js r187 drives the XR frames with the loop registered BEFORE
+      // setSession(), so it must be in place first.
+      this.renderer.setAnimationLoop((time, frame) => {
+        if (frame) this.#update(frame);
+        this.renderer.render(this.scene, this.camera);
+      });
       this.renderer.xr.setReferenceSpaceType(referenceSpaceType);
       await this.renderer.xr.setSession(session);
-      this.referenceSpace = this.renderer.xr.getReferenceSpace();
 
-      this.reticle = this.#createReticle();
+      this.reticle = createReticle();
       this.scene.add(this.reticle);
-
-      this.arrow = this.arrowFactory();
+      this.arrow = createArrow();
       this.arrow.visible = false;
       this.scene.add(this.arrow);
 
       this.viewerSpace = await session.requestReferenceSpace('viewer');
-      this.hitTestSource = await session.requestHitTestSource({
-        space: this.viewerSpace
-      });
+      this.hitTestSource = await session.requestHitTestSource({ space: this.viewerSpace });
     } catch (error) {
-      if (this.session === session) {
-        session.end().catch((endError) => {
-          console.warn('[ar] Could not close failed session:', endError);
-        });
-      }
+      this.renderer.setAnimationLoop(null);
+      if (this.session === session) session.end().catch(() => {});
       throw error;
     }
 
     session.addEventListener('select', () => {
-      this.#placeArrow().catch((error) => {
-        console.warn('[ar] Arrow placement failed:', error);
-      });
+      this.#placeArrow().catch((error) => console.warn('[ar] Arrow placement failed:', error));
     });
 
     this.isActive = true;
     this.onSessionState(true);
-    this.onStatus(`AR active ${this.#describeNextStep()}: visez le sol, puis touchez pour placer la flèche.`);
+    const compassNote = this.compass && this.compass.isReliable ? '' : ' (boussole en calibration : bougez le téléphone en 8)';
+    this.onStatus(`AR active : visez le sol, puis touchez pour placer la flèche${compassNote}.`);
   }
 
-  /**
-   * hasDomOverlay
-   * -------------
-   * @returns {boolean} True when the page UI is visible inside the session.
-   */
+  /** Ends the current session. */
+  stop() {
+    if (this.session) this.session.end().catch((error) => console.warn('[ar] Session end failed:', error));
+  }
+
+  /** @returns {boolean} True when the page UI is visible inside the session. */
   get hasDomOverlay() {
     return Boolean(this.session && this.session.domOverlayState);
   }
 
   /**
-   * update
-   * ------
-   * Called from the Three.js animation loop with the current XRFrame.
-   * Keeps the reticle on the floor and the anchored arrow in place.
-   *
-   * @param {XRFrame} frame – Current WebXR frame (undefined outside AR).
-   */
-  update(frame) {
-    if (!this.isActive || !frame || !this.hitTestSource) return;
-
-    const referenceSpace = this.renderer.xr.getReferenceSpace() || this.referenceSpace;
-    if (!referenceSpace) return;
-
-    if (this.anchor && this.arrow) {
-      const anchorPose = frame.getPose(this.anchor.anchorSpace, referenceSpace);
-      if (anchorPose) {
-        this.#applyFloorPose(this.arrow, anchorPose);
-      }
-      return;
-    }
-
-    const results = frame.getHitTestResults(this.hitTestSource);
-    if (results.length > 0) {
-      this.lastHit = results[0];
-      const pose = this.lastHit.getPose(referenceSpace);
-      if (pose && this.reticle) {
-        this.reticle.visible = true;
-        this.#applyFloorPose(this.reticle, pose);
-      }
-    } else {
-      this.lastHit = null;
-      if (this.reticle) this.reticle.visible = false;
-    }
-  }
-
-  /**
-   * stop
-   * ----
-   * Ends the current immersive-ar session.
-   */
-  stop() {
-    if (this.session) {
-      this.session.end().catch((error) => {
-        console.warn('[ar] Session end failed:', error);
-      });
-    }
-  }
-
-  /**
    * #sessionOptions
    * ---------------
-   * 'full': DOM overlay + anchors + local-floor (all optional).
-   * 'minimal': hit-test only; the page UI is not shown inside AR.
-   * The overlay root is the UI layer, never document.body: the body holds
-   * the opaque page background and the WebGL canvas, which would cover the
-   * camera feed.
-   *
-   * @param {'full'|'minimal'} mode – Configuration to request.
-   * @returns {XRSessionInit} Session options.
+   * 'webgpu' is required: the session is rendered with WebGPU only.
+   * The overlay root is the UI layer, never document.body (opaque page
+   * background and canvas would hide the camera feed).
    */
   #sessionOptions(mode) {
-    if (mode === 'minimal') {
-      return { requiredFeatures: ['hit-test'] };
-    }
-
-    const options = {
-      requiredFeatures: ['hit-test'],
-      optionalFeatures: ['local-floor', 'anchors']
-    };
+    if (mode === 'minimal') return { requiredFeatures: ['webgpu', 'hit-test'] };
+    const options = { requiredFeatures: ['webgpu', 'hit-test'], optionalFeatures: ['local-floor', 'anchors'] };
     if (this.overlayRoot) {
       options.optionalFeatures.push('dom-overlay');
       options.domOverlay = { root: this.overlayRoot };
@@ -298,12 +228,6 @@ export class ARGuide {
     return options;
   }
 
-  /**
-   * #pickReferenceSpaceType
-   * -----------------------
-   * @param {XRSession} session – New AR session.
-   * @returns {Promise<string>} First reference space type the session grants.
-   */
   async #pickReferenceSpaceType(session) {
     let lastError = null;
     for (const type of REFERENCE_SPACE_TYPES) {
@@ -312,185 +236,274 @@ export class ARGuide {
         return type;
       } catch (error) {
         lastError = error;
-        console.warn(`[ar] Reference space '${type}' refused:`, error);
       }
     }
     throw lastError || new Error('Aucun espace de référence AR disponible');
   }
 
-  /**
-   * #describeNextStep
-   * -----------------
-   * @returns {string} " (prochaine étape : Hall)" or an empty string.
-   */
-  #describeNextStep() {
-    if (!this.route || this.route.length < 2 || !this.getNodeName) return '';
-    return `(prochaine étape : ${this.getNodeName(this.route[1])}) `;
+  // ===========================================================================
+  // Frame update
+  // ===========================================================================
+
+  #update(frame) {
+    if (!this.isActive || !this.hitTestSource) return;
+    const referenceSpace = this.renderer.xr.getReferenceSpace();
+    if (!referenceSpace) return;
+
+    const xrCamera = this.renderer.xr.getCamera();
+    this.#updateNorthOffset(xrCamera);
+
+    if (!this.startXR && xrCamera) {
+      this.startXR = new THREE.Vector3().setFromMatrixPosition(xrCamera.matrixWorld);
+    }
+
+    if (this.anchor && this.arrow) {
+      const anchorPose = frame.getPose(this.anchor.anchorSpace, referenceSpace);
+      if (anchorPose) applyFloorPose(this.arrow, anchorPose);
+    }
+
+    const results = frame.getHitTestResults(this.hitTestSource);
+    if (results.length > 0) {
+      this.lastHit = results[0];
+      const pose = this.lastHit.getPose(referenceSpace);
+      if (pose) {
+        if (this.floorY === null) this.floorY = pose.transform.position.y;
+        if (this.reticle && !this.anchor) {
+          this.reticle.visible = true;
+          applyFloorPose(this.reticle, pose);
+        }
+      }
+    } else {
+      this.lastHit = null;
+      if (this.reticle) this.reticle.visible = false;
+    }
+
+    if (!this.trail && this.northOffset !== null && this.floorY !== null && this.startXR) {
+      this.#buildTrail();
+    }
+    if (this.trail && this.northOffset !== null) {
+      this.trail.rotation.y = this.northOffset;
+    }
   }
 
   /**
-   * #createReticle
-   * --------------
-   * @returns {THREE.Mesh} Flat cyan ring placed on the detected floor.
+   * North offset: the compass gives the true heading of the back camera,
+   * WebXR gives its yaw in the AR world; their difference maps any campus
+   * bearing to a direction in the AR scene. Averaged on the unit circle.
    */
-  #createReticle() {
-    const geometry = new THREE.RingGeometry(0.12, 0.16, 32);
-    geometry.rotateX(-Math.PI / 2);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x00d2ff,
-      transparent: true,
-      opacity: 0.9,
-      side: THREE.DoubleSide,
-      toneMapped: false
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'arReticle';
-    mesh.visible = false;
-    return mesh;
+  #updateNorthOffset(xrCamera) {
+    if (!this.compass || !this.compass.isReliable || !xrCamera) return;
+    const forward = new THREE.Vector3();
+    xrCamera.getWorldDirection(forward);
+    if (Math.abs(forward.y) > 0.85) return; // looking at the floor: yaw unstable
+    const yawXR = Math.atan2(forward.x, -forward.z); // 0 = −Z, + toward +X
+    const offset = this.compass.heading * DEG - yawXR;
+    const s = this.northSamples;
+    const weight = s.n < 30 ? 1 / (s.n + 1) : 0.03;
+    s.x += (Math.sin(offset) - s.x) * weight;
+    s.y += (Math.cos(offset) - s.y) * weight;
+    s.n++;
+    this.northOffset = Math.atan2(s.x, s.y);
+  }
+
+  /** XR direction (unit vector) of a true-north bearing in degrees. */
+  #directionOfBearing(bearing) {
+    const theta = bearing * DEG - this.northOffset;
+    return new THREE.Vector3(Math.sin(theta), 0, -Math.cos(theta));
   }
 
   /**
-   * #placeArrow
-   * -----------
-   * Anchors the arrow at the last hit and points it away from the viewer.
-   * Route-bearing calibration (compass/QR orientation) is a Sprint 5 item.
+   * Floor chevrons along the first ~40 m of the route, drawn in a group whose
+   * axes are the campus axes (x = east, −z = north) rotated by northOffset.
    */
+  #buildTrail() {
+    if (!this.route || !this.route.legs || !this.route.legs.length || !this.startPoint) return;
+    const leg = this.route.legs.find((l) => l.level === this.startPoint.level) || this.route.legs[0];
+    const points = leg.points;
+    if (points.length < 2) return;
+
+    const group = new THREE.Group();
+    group.position.set(this.startXR.x, this.floorY + 0.01, this.startXR.z);
+    const material = new THREE.MeshBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+    const geometry = chevronGeometry(0.22);
+
+    let travelled = 0;
+    for (let i = 1; i < points.length && travelled < 40; i++) {
+      const [x0, y0] = points[i - 1];
+      const [x1, y1] = points[i];
+      const length = Math.hypot(x1 - x0, y1 - y0);
+      const yaw = Math.atan2(x1 - x0, -(y1 - y0)); // campus frame → group frame
+      for (let d = travelled === 0 ? 0.8 : 0; d < length && travelled + d < 40; d += 1) {
+        const t = d / length;
+        const chevron = new THREE.Mesh(geometry, material);
+        chevron.position.set(x0 + (x1 - x0) * t - this.startPoint.x, 0, -((y0 + (y1 - y0) * t) - this.startPoint.y));
+        chevron.rotation.y = yaw; // tip (+Z) along the segment
+        group.add(chevron);
+      }
+      travelled += length;
+    }
+    this.trail = group;
+    this.scene.add(group);
+  }
+
+  // ===========================================================================
+  // Arrow
+  // ===========================================================================
+
   async #placeArrow() {
     if (!this.lastHit || !this.arrow) return;
-
-    const referenceSpace = this.renderer.xr.getReferenceSpace() || this.referenceSpace;
+    const referenceSpace = this.renderer.xr.getReferenceSpace();
     const pose = this.lastHit.getPose(referenceSpace);
     if (!pose) return;
 
-    this.#applyFloorPose(this.arrow, pose);
-
-    const cameraYaw = this.#getCameraForwardYaw();
-    this.arrow.rotation.y = cameraYaw !== null ? cameraYaw : this.#getRouteYaw();
+    applyFloorPose(this.arrow, pose);
+    const bearing = this.#routeBearingAt(pose.transform.position);
+    let direction;
+    if (bearing !== null && this.northOffset !== null) {
+      direction = this.#directionOfBearing(bearing);
+    } else {
+      // No reliable compass: point away from the phone
+      direction = new THREE.Vector3();
+      this.renderer.xr.getCamera().getWorldDirection(direction);
+      direction.y = 0;
+    }
+    this.arrow.rotation.y = Math.atan2(direction.x, direction.z);
     this.arrow.visible = true;
     if (this.reticle) this.reticle.visible = false;
 
     try {
-      if (typeof this.lastHit.createAnchor === 'function') {
-        this.anchor = await this.lastHit.createAnchor();
-      }
+      if (typeof this.lastHit.createAnchor === 'function') this.anchor = await this.lastHit.createAnchor();
     } catch (error) {
       console.warn('[ar] XRAnchor unavailable; keeping the hit pose:', error);
     }
 
-    this.onStatus(`Flèche placée ${this.#describeNextStep()}— suivez la direction indiquée.`);
-  }
-
-  /**
-   * #getCameraForwardYaw
-   * --------------------
-   * @returns {number|null} Yaw that points the arrow away from the phone.
-   */
-  #getCameraForwardYaw() {
-    const xrCamera = this.renderer.xr.getCamera();
-    if (!xrCamera) return null;
-
-    const forward = new THREE.Vector3();
-    xrCamera.getWorldDirection(forward);
-    forward.y = 0;
-
-    if (forward.lengthSq() < 1e-6) return null;
-    return Math.atan2(forward.x, forward.z);
-  }
-
-  /**
-   * #applyFloorPose
-   * ---------------
-   * Copies a hit/anchor pose translation to a flat object on the floor.
-   *
-   * @param {THREE.Object3D} object – Arrow or reticle.
-   * @param {XRPose} pose – Pose in the current reference space.
-   */
-  #applyFloorPose(object, pose) {
-    object.position.set(
-      pose.transform.position.x,
-      pose.transform.position.y + 0.005,
-      pose.transform.position.z
-    );
-  }
-
-  /**
-   * #getRouteYaw
-   * ------------
-   * Converts the graph direction of the first leg into a Three.js Y rotation.
-   * Graph x maps to world x; graph y maps to world z.
-   *
-   * @returns {number} Yaw in radians.
-   */
-  #getRouteYaw() {
-    if (!this.route || this.route.length < 2 || !this.getDirection) return 0;
-    const direction = this.getDirection(this.route[0], this.route[1]);
-    if (!direction) return 0;
-    return Math.atan2(direction.dx, direction.dy);
-  }
-
-  /**
-   * #hideDemoObjects
-   * ----------------
-   * @param {boolean} hidden – Whether to hide the non-AR demo objects.
-   */
-  #hideDemoObjects(hidden) {
-    for (const object of this.demoObjects) {
-      if (!object) continue;
-      if (!this.savedVisibility.has(object)) {
-        this.savedVisibility.set(object, object.visible);
-      }
-      object.visible = hidden ? false : this.savedVisibility.get(object);
+    const next = this.route && this.route.steps ? this.route.steps.find((s) => s.kind === 'walk') : null;
+    if (bearing !== null && this.northOffset !== null) {
+      this.onStatus(`Flèche orientée vers ${Math.round(bearing)}° — ${next ? next.text : 'suivez la flèche'}.`);
+    } else {
+      this.onStatus('Boussole indisponible : flèche orientée devant vous. Recalibrez (mouvement en 8).');
     }
   }
 
-  /**
-   * #handleSessionEnd
-   * -----------------
-   * Cleans up XR resources and restores the normal Three.js scene.
-   */
+  /** Bearing of the route segment closest to a point of the AR scene. */
+  #routeBearingAt(position) {
+    if (!this.route || !this.route.legs || !this.startPoint) return null;
+    const leg = this.route.legs.find((l) => l.level === this.startPoint.level) || this.route.legs[0];
+    if (!leg || leg.points.length < 2) return null;
+    if (this.northOffset === null || !this.startXR) {
+      const [x0, y0] = leg.points[0];
+      const [x1, y1] = leg.points[1];
+      return bearingOf(x0, y0, x1, y1);
+    }
+    // AR point → campus coordinates (inverse of the trail transform)
+    const dx = position.x - this.startXR.x;
+    const dz = position.z - this.startXR.z;
+    const c = Math.cos(-this.northOffset);
+    const s = Math.sin(-this.northOffset);
+    const gx = dx * c + dz * s;
+    const gz = -dx * s + dz * c;
+    const px = this.startPoint.x + gx;
+    const py = this.startPoint.y - gz;
+
+    let best = null;
+    for (let i = 1; i < leg.points.length; i++) {
+      const [x0, y0] = leg.points[i - 1];
+      const [x1, y1] = leg.points[i];
+      const vx = x1 - x0; const vy = y1 - y0;
+      const t = Math.max(0, Math.min(1, ((px - x0) * vx + (py - y0) * vy) / (vx * vx + vy * vy || 1)));
+      const distance = Math.hypot(px - (x0 + vx * t), py - (y0 + vy * t));
+      if (!best || distance < best.distance) best = { distance, bearing: bearingOf(x0, y0, x1, y1) };
+    }
+    return best ? best.bearing : null;
+  }
+
+  // ===========================================================================
+  // Cleanup
+  // ===========================================================================
+
   #handleSessionEnd() {
     const wasActive = this.isActive;
     this.isActive = false;
-
+    if (this.renderer) this.renderer.setAnimationLoop(null);
     if (this.hitTestSource) {
       this.hitTestSource.cancel();
       this.hitTestSource = null;
     }
-
-    if (this.reticle) {
-      this.scene.remove(this.reticle);
-      this.reticle.geometry.dispose();
-      this.reticle.material.dispose();
-      this.reticle = null;
+    for (const object of [this.reticle, this.arrow, this.trail]) {
+      if (!object) continue;
+      this.scene.remove(object);
+      disposeObject(object);
     }
-
-    if (this.arrow) {
-      this.scene.remove(this.arrow);
-      this.arrow.traverse((child) => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach((material) => material.dispose());
-          } else {
-            child.material.dispose();
-          }
-        }
-      });
-      this.arrow = null;
-    }
-
+    this.reticle = null;
+    this.arrow = null;
+    this.trail = null;
     this.anchor = null;
     this.lastHit = null;
     this.session = null;
-
-    if (this.savedSceneState) {
-      this.scene.background = this.savedSceneState.background;
-      this.scene.fog = this.savedSceneState.fog;
-      this.savedSceneState = null;
-    }
-    this.#hideDemoObjects(false);
     this.onSessionState(false);
-    // A session that failed during setup keeps the caller's error message
     if (wasActive) this.onStatus('Session AR terminée.');
   }
+}
+
+// =============================================================================
+// Geometry
+// =============================================================================
+
+function applyFloorPose(object, pose) {
+  object.position.set(pose.transform.position.x, pose.transform.position.y + 0.005, pose.transform.position.z);
+}
+
+function createReticle() {
+  const geometry = new THREE.RingGeometry(0.12, 0.16, 32);
+  geometry.rotateX(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+  mesh.visible = false;
+  return mesh;
+}
+
+/**
+ * createArrow
+ * -----------
+ * Flat floor arrow (1 m, extruded 4 cm), origin at the tail, tip toward +Z.
+ */
+export function createArrow() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.08, 0);
+  shape.lineTo(-0.08, 0.55);
+  shape.lineTo(-0.22, 0.55);
+  shape.lineTo(0, 1.0);
+  shape.lineTo(0.22, 0.55);
+  shape.lineTo(0.08, 0.55);
+  shape.lineTo(0.08, 0);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.04, bevelEnabled: false });
+  geometry.rotateX(Math.PI / 2);
+  geometry.translate(0, 0.04, 0);
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide })));
+  return group;
+}
+
+/** Small flat chevron, tip toward +Z. */
+function chevronGeometry(size) {
+  const s = size;
+  const shape = new THREE.Shape();
+  shape.moveTo(-s, -s * 0.5);
+  shape.lineTo(0, s * 0.5);
+  shape.lineTo(s, -s * 0.5);
+  shape.lineTo(s, -s * 0.05);
+  shape.lineTo(0, s * 0.95);
+  shape.lineTo(-s, -s * 0.05);
+  shape.closePath();
+  const geometry = new THREE.ShapeGeometry(shape);
+  geometry.rotateX(-Math.PI / 2);
+  geometry.rotateY(Math.PI);
+  return geometry;
+}
+
+function disposeObject(root) {
+  root.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) (Array.isArray(child.material) ? child.material : [child.material]).forEach((m) => m.dispose());
+  });
 }

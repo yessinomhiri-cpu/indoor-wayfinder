@@ -1,0 +1,5 @@
+{
+  "about": "Corrections relevées sur place par l'équipe : passages absents des plans CAD de SUP'COM (level, from [x,y], to [x,y], width en m, note) et noms de salles (id ou code → nom). Coordonnées en mètres dans le repère local (origine : entrée principale, x = est, y = nord). Exporté par le mode relevé de l'application ; relancer `node scripts/build-campus.mjs` après modification.",
+  "passages": [],
+  "names": {}
+}

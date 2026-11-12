@@ -1,87 +1,76 @@
 # Manuel utilisateur — Indoor Wayfinder
 
-**Version :** 2.3.0
-**Public :** visiteurs, étudiants, candidats, personnel du bâtiment
+**Version :** 3.0.0
+**Public :** visiteurs, étudiants, candidats, personnel de SUP'COM
 
 ## Ce dont vous avez besoin
 
-- Un smartphone **Android** avec **Chrome** et **ARCore** pour le guidage AR.
-- Une connexion **HTTPS** (GitHub Pages ou tunnel sécurisé).
-- Les QR codes du bâtiment, imprimés et fixés dans les couloirs.
-
-Aucune application n'est à installer : Indoor Wayfinder s'ouvre dans le
-navigateur. Vous pouvez l'ajouter à l'écran d'accueil depuis le menu Chrome.
+- Un smartphone **Android** avec **Chrome** à jour.
+- Pour la réalité augmentée : **Google Play Services for AR** et, tant que
+  Chrome ne l'active pas par défaut, le réglage
+  `chrome://flags/#webxr-webgpu-binding` sur **Enabled** (puis redémarrer Chrome).
+- Le lien HTTPS de l'application. Rien à installer ; vous pouvez l'ajouter à
+  l'écran d'accueil depuis le menu Chrome.
 
 ## Utilisation pas à pas
 
-1. **Ouvrez le lien** de l'application dans Chrome.
-2. Autorisez l'accès à la **caméra** quand Chrome le demande.
-3. Appuyez sur **SCANNER**.
-4. Cadrez le **QR code le plus proche** dans le viseur.
-   - Sur ordinateur, utilisez **Importer une image QR** à la place de la caméra.
-   - Le voyant de position affiche **« Vous êtes ici : … »**.
-   - Si le QR est inconnu, vérifiez que vous êtes dans le bon bâtiment.
-5. Appuyez sur **DESTINATION**.
-   - Le champ **Départ** affiche votre position ; vous pouvez la changer à la
-     main si aucun QR n'est à portée.
-6. Cherchez ou choisissez une salle ou un couloir, par exemple **Salle B12**.
-   Tous les points du plan sont accessibles depuis n'importe quel départ.
-   - L'itinéraire affiche la distance réelle et les étapes calculées par Dijkstra.
-   - Le plan passe en **3D** : la ligne cyan mène à la balise de la salle.
-     Glissez pour pivoter, pincez pour zoomer ; le bouton **2D** revient au plan.
-7. Lisez le trajet, puis appuyez sur **Guidage AR**.
-   - Sans AR sur le téléphone, ce bouton s'appelle **Voir en 3D** et affiche
-     l'itinéraire sur la maquette 3D.
-8. Visez le sol avec la caméra, puis **touchez l'écran** pour placer la flèche.
-9. Suivez la flèche jusqu'au prochain QR code.
-10. Au QR suivant, appuyez sur **Scanner** pour recalibrer la position ;
-    l'itinéraire est recalculé automatiquement.
-11. Appuyez sur **Quitter AR** pour terminer le guidage.
-
-## Mode démonstration sur ordinateur
-
-Le plan interactif est affiché au démarrage. Un clic sur un nœud simule un
-scan QR (libellé **Démo**). Choisissez ensuite une destination : la ligne cyan
-et les distances sont calculées par Dijkstra. Ce mode sert à montrer le
-fonctionnement sans téléphone ; la démonstration réelle utilise la caméra.
+1. **Ouvrez le lien** dans Chrome. Le plan 3D de SUP'COM s'affiche.
+2. **Indiquez où vous êtes :**
+   - **SCANNER** → cadrez le QR code le plus proche ; ou
+   - **DESTINATION** → champ **Départ** ; ou
+   - touchez le plan à l'endroit où vous vous trouvez ; ou
+   - dehors, **GPS** (précision affichée).
+3. **DESTINATION** → cherchez un amphi, un service ou une salle (ex. `A1-07`).
+   Toutes les salles des 4 niveaux sont listées avec leur distance.
+4. Le panneau **Itinéraire** donne la distance, la durée, les changements
+   d'étage et les consignes (« Marchez 22 m vers le Sud-Ouest », « Prenez
+   l'escalier jusqu'à l'étage 3 »). Cochez **Sans escaliers** pour passer par
+   les ascenseurs.
+5. **Guidage AR** : tenez-vous à l'endroit du QR scanné, visez le sol. Des
+   chevrons cyan montrent le début du trajet ; touchez le sol pour poser la
+   flèche, orientée vers le couloir à prendre.
+6. Au QR suivant, **Scanner** pour recaler la position ; l'itinéraire est
+   recalculé. Le téléphone vibre à l'arrivée.
+7. **Quitter AR** termine le guidage.
 
 ## Comprendre l'écran
 
 | Élément | Signification |
 |---|---|
-| Pastille verte « Vous êtes ici » | Dernier QR code scanné |
-| Bouton **SCANNER** | Ouvre la caméra et le décodage QR |
-| Bouton **DESTINATION** | Ouvre la liste des salles |
-| Panneau **Itinéraire** | Distance totale, étapes, guidage AR |
-| Bouton **Guidage AR** | Démarre la session `immersive-ar` |
-| Bouton **Quitter AR** | Termine la session AR |
-| Badge **En ligne / Hors ligne** | État de la connexion |
-| Badge **AR : disponible / non disponible** | Support WebXR de l'appareil |
-| Plan + ligne cyan | Graphe du bâtiment et itinéraire calculé |
-| Boutons **2D / 3D** | Plan schématique ou maquette 3D de l'étage |
-| Bouton **Voir en 3D** | Remplace **Guidage AR** quand l'AR n'est pas disponible |
+| **RDC / 1 / 2 / 3 / Tous** | Étage affiché dans la vue 3D |
+| **3D / Plan** | Vue orbite ou plan vu de dessus, nord en haut |
+| Rose N / E / S / O | Boussole ; touchez-la pour l'activer, la lecture indique le cap (« NE 47° ») |
+| **GPS** | Position à l'extérieur des bâtiments |
+| **Relevé** | Mode équipe : nommer une salle, signaler une porte absente du plan |
+| Ligne cyan + chevrons | Itinéraire ; trait vertical rouge = escalier, vert = ascenseur |
+| Balise cyan | Destination |
+| Pastille verte « Vous êtes ici » | Dernière position connue |
+| Badge **AR : WebGPU prête / flag WebGPU-XR / non disponible** | État de la réalité augmentée |
 
 ## Bon à savoir
 
-- La position n'est **pas continue** : elle est mise à jour à chaque QR scanné.
-- Entre deux QR, l'application conserve la dernière position connue.
+- À l'intérieur, la position vient des **QR codes** (le GPS n'est pas assez précis).
+- La boussole peut être perturbée près de structures métalliques : faites un
+  mouvement en **8** avec le téléphone pour la recalibrer.
+- Les salles sans nom affichent leur code (`B2-05`) : le mode relevé permet de
+  saisir le nom écrit sur la porte.
+- « **Accès à confirmer** » : le plan ne montre pas de porte vers ce local ;
+  l'itinéraire vous amène au point le plus proche.
 - L'application fonctionne **hors ligne** après un premier chargement complet.
-- Aucune donnée personnelle n'est collectée ; il n'y a ni compte ni serveur.
 
 ## En cas de problème
 
 | Problème | Solution |
 |---|---|
-| La caméra ne s'ouvre pas | Vérifiez l'URL HTTPS et l'autorisation caméra dans Chrome |
-| « QR code inconnu » | Vérifiez que le QR appartient au plan `building.json` |
-| Aucun itinéraire | Scannez un QR ou choisissez un **Départ**, puis la destination |
-| « AR non supporté » | Utilisez Chrome Android avec ARCore et HTTPS |
-| Le sol n'est pas détecté | Déplacez légèrement le téléphone, évitez les surfaces réfléchissantes |
-| La flèche n'apparaît pas | Touchez l'écran après avoir visé le sol |
-| Page ancienne après mise à jour | Rechargez ; le Service Worker met le cache à jour |
+| La caméra ne s'ouvre pas | URL en HTTPS et autorisation caméra dans Chrome |
+| « QR code inconnu » | Le QR n'appartient pas au plan de SUP'COM |
+| Vue 3D absente | WebGPU requis : Chrome à jour (Android 12+) |
+| « AR : flag WebGPU-XR » | Activez `chrome://flags/#webxr-webgpu-binding` et relancez Chrome |
+| Message « touchez à nouveau Guidage AR » | Touchez encore une fois : la configuration simplifiée démarre |
+| Flèche mal orientée | Recalibrez la boussole (8), rescannez un QR, reposez la flèche |
+| Ancienne version affichée | Fermez l'onglet, rouvrez le lien (mise à jour automatique) |
 
 ## Confidentialité
 
-L'application n'envoie ni position, ni image, ni identifiant vers un serveur.
-Le décodage QR et le calcul d'itinéraire se font dans le navigateur.
-La dernière position peut être conservée localement pour la session.
+Aucune donnée personnelle n'est collectée ni envoyée : position, cap et
+relevés restent sur le téléphone. Il n'y a ni compte ni serveur applicatif.

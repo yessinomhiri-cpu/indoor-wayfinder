@@ -6,1137 +6,598 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-12
- * Version      : 2.3.2 (Sprint 4 – routing, 3D route view + immersive AR)
- * Description  : Main application controller. Initializes the Three.js 3D
- *                scene (rotating cube with visible edges, ground depth grid
- *                with fog, radial ground glow, ambient + directional lights,
- *                responsive viewport handling, prefers-reduced-motion) and
- *                powers the mobile-first UI layer (accessible dialogs,
- *                status toast, network monitor, scan overlay, destination
- *                sheet), QR scanning, graph-driven destinations, Dijkstra
- *                routes, a real-time 3D route view, immersive-ar guidance,
- *                graceful 3D fallback and Service Worker registration.
+ * Version      : 3.0.0 (SUP'COM campus – WebGPU, multi-floor, compass, GPS)
+ * Description  : Application controller and NavigationService facade: wires
+ *                the QR scanner, the SUP'COM campus model and router, the
+ *                WebGPU 3D view, immersive-ar guidance, compass, outdoor GPS,
+ *                survey mode and the mobile UI (accessible dialogs, toast,
+ *                destination sheet, route panel), plus Service Worker
+ *                registration.
  * ==========================================================================
  */
 
-// ---------------------------------------------------------------------------
-// Imports – Three.js is resolved via the import map in index.html (jsDelivr pinned)
-// ---------------------------------------------------------------------------
-import * as THREE from 'three';
 import { QrScanner } from './scanner.js';
-import { BuildingGraph } from './navigation.js';
+import { CampusMap, CampusRouter, ShortestPathStrategy, AvoidStairsStrategy } from './navigation.js';
+import { CampusView3D } from './view3d.js';
 import { ARGuide, isUserActivationError } from './ar.js';
-import { FloorView3D } from './view3d.js';
+import { Compass, GpsTracker, shortCardinal } from './geo.js';
+import { SurveyStore } from './survey.js';
+import { hasWebGPU } from './gpu.js';
+
+const APP_VERSION = '3.0.0';
+const CAMPUS_URL = 'assets/campus/supcom.json';
+const WALKING_SPEED = 1.2; // m/s
 
 // ---------------------------------------------------------------------------
-// Application State & Services
+// DOM references
 // ---------------------------------------------------------------------------
 
-/** @type {BuildingGraph} Building graph model */
-const buildingGraph = new BuildingGraph();
+const $ = (id) => document.getElementById(id);
 
-/** @type {QrScanner} Scanner engine */
-const qrScanner = new QrScanner();
+const sceneContainer = $('scene-container');
+const uiOverlayElement = $('ui-overlay');
+const mapViewElement = $('map-view');
+const map3dElement = $('map-3d');
+const mapUnsupportedElement = $('map-unsupported');
+const mapHintElement = $('map-hint');
+const mapEyebrowElement = $('map-eyebrow');
+const floorTabsElement = $('floor-tabs');
+const view3dButton = $('btn-view-3d');
+const viewTopButton = $('btn-view-top');
+const gpsButton = $('btn-gps');
+const surveyButton = $('btn-survey');
+const compassButton = $('btn-compass');
+const compassRoseElement = $('compass-rose');
+const compassReadoutElement = $('compass-readout');
+const arSupportBadgeElement = $('ar-support-badge');
 
-/** @type {string|null} ID of the active QR node calibrated in the building */
-let currentQrNodeId = null;
+const renderFallbackElement = $('render-fallback');
+const renderFallbackMessageElement = $('render-fallback-message');
+const statusToastElement = $('status-toast');
+const statusMessageElement = $('status-message');
+const networkStatusBadge = $('network-status-badge');
+const networkStatusLabel = $('network-status-label');
 
-/** @type {string|null} ID of the target destination chosen by the user */
-let currentDestinationId = null;
+const surveyPanelElement = $('survey-panel');
+const surveyHelpElement = $('survey-help');
+const surveyNameInput = $('survey-name');
+const surveySaveButton = $('btn-survey-save');
+const surveyPassageButton = $('btn-survey-passage');
+const surveyUndoButton = $('btn-survey-undo');
+const surveyExportButton = $('btn-survey-export');
+const surveyCountElement = $('survey-count');
 
-/** @type {boolean} True once assets/building.json has been parsed */
-let isGraphReady = false;
+const routePanelElement = $('route-panel');
+const routeTitleElement = $('route-title');
+const routeSummaryElement = $('route-summary');
+const routeStepsElement = $('route-steps');
+const avoidStairsInput = $('route-avoid-stairs');
+const startArButton = $('btn-start-ar');
+const startArLabelElement = $('btn-start-ar-label');
+const stopArButton = $('btn-stop-ar');
+const closeRouteButton = $('btn-close-route');
+const rescanRouteButton = $('btn-rescan-route');
 
-/** @type {string[]} Current Dijkstra path from the scanned node to the destination */
-let currentRoutePath = [];
+const positionChipElement = $('position-chip');
+const positionLabelElement = $('position-label');
+const rescanButton = $('btn-rescan');
+const scanTriggerButton = $('btn-scan');
+const destinationTriggerButton = $('btn-destination');
 
-/** @type {number} Current route distance in metres */
-let currentRouteDistance = 0;
+const scanOverlayElement = $('scan-overlay');
+const scanVideoElement = $('scan-video');
+const scanCanvasElement = $('scan-canvas');
+const closeScanButton = $('btn-close-scan');
+const qrFileInput = $('qr-file-input');
 
-/** @type {Object|null} Immersive AR controller (set during init) */
+const sheetBackdropElement = $('sheet-backdrop');
+const destinationSheetElement = $('destination-sheet');
+const sheetDragHandleBar = $('sheet-drag-handle-bar');
+const closeDestinationButton = $('btn-close-destination');
+const startSelectElement = $('start-select');
+const destinationSearchInput = $('destination-search-input');
+const destinationListScroll = $('destination-list-scroll');
+const destinationsLoadingElement = $('destinations-loading');
+const noDestinationsFoundMsg = $('no-destinations-found');
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+/** @type {CampusMap|null} */
+let campus = null;
+/** @type {CampusRouter|null} */
+let router = null;
+/** @type {CampusView3D|null} */
+let view = null;
+/** @type {ARGuide|null} */
 let arGuide = null;
+let arStatus = { supported: false, reason: 'loading' };
 
-/** @type {FloorView3D|null} Real-time 3D floor view (created on first use) */
-let floorView3D = null;
-
-/** @type {'2d'|'3d'} Current floor-plan display mode */
-let mapViewMode = '2d';
-
-/** @type {boolean} True when immersive-ar is supported on this device */
-let isArSupported = false;
-
-/** @type {number|null} Timeout identifier for auto-dismissing status toast */
-let toastDismissTimerId = null;
-
-// ---------------------------------------------------------------------------
-// DOM References
-// ---------------------------------------------------------------------------
-
-/** @type {HTMLDivElement} Host element for the Three.js canvas */
-const sceneContainer = document.getElementById('scene-container');
-
-/** @type {HTMLDivElement} UI overlay wrapping header, toast, and action bar */
-const uiOverlayElement = document.getElementById('ui-overlay');
-
-/** @type {HTMLDivElement} Persistent banner shown when the 3D renderer fails */
-const renderFallbackElement = document.getElementById('render-fallback');
-
-/** @type {HTMLSpanElement} Message inside the 3D failure banner */
-const renderFallbackMessageElement = document.getElementById('render-fallback-message');
-
-/** @type {HTMLDivElement} Floating status toast pill */
-const statusToastElement = document.getElementById('status-toast');
-
-/** @type {HTMLSpanElement} Text label inside the status toast */
-const statusMessageElement = document.getElementById('status-message');
-
-/** @type {HTMLDivElement} Connectivity badge element */
-const networkStatusBadge = document.getElementById('network-status-badge');
-
-/** @type {HTMLSpanElement} Connectivity status text label */
-const networkStatusLabel = document.getElementById('network-status-label');
-
-/** @type {HTMLButtonElement} Primary trigger button for the scanner overlay */
-const scanTriggerButton = document.getElementById('btn-scan');
-
-/** @type {HTMLButtonElement} Secondary trigger button for destination sheet */
-const destinationTriggerButton = document.getElementById('btn-destination');
-
-/** @type {HTMLDivElement} Fullscreen scan reticle overlay */
-const scanOverlayElement = document.getElementById('scan-overlay');
-
-/** @type {HTMLVideoElement} Video preview element for camera stream */
-const scanVideoElement = document.getElementById('scan-video');
-
-/** @type {HTMLCanvasElement} Off-screen canvas for frame pixel analysis */
-const scanCanvasElement = document.getElementById('scan-canvas');
-
-/** @type {HTMLButtonElement} Close button for scan overlay */
-const closeScanButton = document.getElementById('btn-close-scan');
-
-/** @type {HTMLDivElement} Modal backdrop for destination bottom sheet */
-const sheetBackdropElement = document.getElementById('sheet-backdrop');
-
-/** @type {HTMLElement} Destination bottom sheet panel */
-const destinationSheetElement = document.getElementById('destination-sheet');
-
-/** @type {HTMLDivElement} Drag handle bar of the bottom sheet */
-const sheetDragHandleBar = document.getElementById('sheet-drag-handle-bar');
-
-/** @type {HTMLButtonElement} Close button for destination sheet */
-const closeDestinationButton = document.getElementById('btn-close-destination');
-
-/** @type {HTMLInputElement} Search input field for destination rooms */
-const destinationSearchInput = document.getElementById('destination-search-input');
-
-/** @type {HTMLDivElement} Scroll container holding destination room items */
-const destinationListScroll = document.getElementById('destination-list-scroll');
-
-/** @type {HTMLDivElement} Empty search message */
-const noDestinationsFoundMsg = document.getElementById('no-destinations-found');
-
-/** @type {HTMLParagraphElement} Loading message inside the destination sheet */
-const destinationsLoadingElement = document.getElementById('destinations-loading');
-
-/** @type {HTMLDivElement} Current-position chip above the action bar */
-const positionChipElement = document.getElementById('position-chip');
-
-/** @type {HTMLSpanElement} Name of the current graph node */
-const positionLabelElement = document.getElementById('position-label');
-
-/** @type {HTMLButtonElement} Re-scan button inside the position chip */
-const rescanButton = document.getElementById('btn-rescan');
-
-/** @type {HTMLElement} Floating route panel */
-const routePanelElement = document.getElementById('route-panel');
-
-/** @type {HTMLHeadingElement} Destination name inside the route panel */
-const routeTitleElement = document.getElementById('route-title');
-
-/** @type {HTMLParagraphElement} Distance and step count inside the route panel */
-const routeSummaryElement = document.getElementById('route-summary');
-
-/** @type {HTMLOListElement} Ordered route steps */
-const routeStepsElement = document.getElementById('route-steps');
-
-/** @type {HTMLButtonElement} Starts the immersive-ar guide */
-const startArButton = document.getElementById('btn-start-ar');
-
-/** @type {HTMLButtonElement} Closes the route panel */
-const closeRouteButton = document.getElementById('btn-close-route');
-
-/** @type {HTMLButtonElement} Re-scans a QR code from the route panel */
-const rescanRouteButton = document.getElementById('btn-rescan-route');
-
-/** @type {HTMLButtonElement} Ends the immersive-ar session */
-const stopArButton = document.getElementById('btn-stop-ar');
-
-/** @type {HTMLDivElement} Interactive SVG floor plan */
-const mapViewElement = document.getElementById('map-view');
-
-/** @type {SVGSVGElement} SVG element holding the building graph */
-const mapSvgElement = document.getElementById('map-svg');
-
-/** @type {HTMLParagraphElement} Hint below the floor plan */
-const mapHintElement = document.getElementById('map-hint');
-
-/** @type {HTMLSpanElement} WebXR availability badge */
-const arSupportBadgeElement = document.getElementById('ar-support-badge');
-
-/** @type {HTMLInputElement} QR image fallback input */
-const qrFileInput = document.getElementById('qr-file-input');
-
-/** @type {HTMLDivElement} Host of the 3D floor view canvas */
-const map3dElement = document.getElementById('map-3d');
-
-/** @type {HTMLButtonElement} Switches the floor plan to 2D */
-const view2dButton = document.getElementById('btn-view-2d');
-
-/** @type {HTMLButtonElement} Switches the floor plan to 3D */
-const view3dButton = document.getElementById('btn-view-3d');
-
-/** @type {HTMLSelectElement} Start-point picker in the destination sheet */
-const startSelectElement = document.getElementById('start-select');
-
-/** @type {HTMLSpanElement} Label of the AR / 3D route button */
-const startArLabelElement = document.getElementById('btn-start-ar-label');
-
-// ---------------------------------------------------------------------------
-// Three.js 3D Scene Initialization
-// ---------------------------------------------------------------------------
+const qrScanner = new QrScanner();
+const compass = new Compass();
+const survey = new SurveyStore();
+/** @type {GpsTracker|null} */
+let gps = null;
 
 /**
- * createScene
- * -----------
- * Builds the Three.js Scene with a deep night blue background and exponential
- * fog that smoothly fades the ground grid toward the horizon.
- *
- * @returns {THREE.Scene} The configured scene object.
+ * Where the user is: a place (QR / picker) or a point (map tap / GPS).
+ * @type {{level:number, x:number, y:number, name:string, placeId:string|null, source:string}|null}
  */
-function createScene() {
-  const scene = new THREE.Scene();
-  const backgroundHex = 0x070913; // Cohesive with CSS var(--color-bg-base)
+let currentPosition = null;
+/** @type {string|null} */
+let currentDestinationId = null;
+/** @type {Object|null} */
+let currentRoute = null;
+/** @type {Map<string, number>} */
+let distanceCache = new Map();
+let distanceCacheKey = '';
+let surveyMode = false;
+let surveySelection = null;
+let passageStart = null;
+let wakeLock = null;
+let toastTimer = null;
 
-  scene.background = new THREE.Color(backgroundHex);
-  // Fog creates spatial depth, blending the grid gracefully into the dark horizon
-  scene.fog = new THREE.FogExp2(backgroundHex, 0.08);
-
-  return scene;
-}
-
-/**
- * createCamera
- * ------------
- * Constructs a PerspectiveCamera calibrated for a mobile portrait viewport,
- * tilted slightly downward to preview the central object and ground grid.
- *
- * @returns {THREE.PerspectiveCamera} The configured camera.
- */
-function createCamera() {
-  const aspectRatio = window.innerWidth / window.innerHeight;
-  const fieldOfView = 58; // Vertical FOV in degrees
-  const nearClippingPlane = 0.1;
-  const farClippingPlane = 80;
-
-  const camera = new THREE.PerspectiveCamera(
-    fieldOfView,
-    aspectRatio,
-    nearClippingPlane,
-    farClippingPlane
-  );
-
-  // Position camera to observe the cube and ground grid in portrait mode
-  camera.position.set(0, 2.2, 4.4);
-  camera.lookAt(0, 0.9, 0);
-
-  return camera;
-}
-
-/**
- * createRenderer
- * --------------
- * Creates the WebGLRenderer with antialiasing enabled, limits pixel ratio
- * to 2 (protecting mobile battery and frame rate), and appends canvas to DOM.
- *
- * @param {HTMLElement} container – Target DOM element for the canvas.
- * @returns {THREE.WebGLRenderer} The configured renderer.
- */
-function createRenderer(container) {
-  const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    alpha: true,
-    powerPreference: 'high-performance'
-  });
-
-  // Strict pixel ratio ceiling at 2 for mobile efficiency
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  // Keep the canvas transparent where nothing is drawn (required in AR mode)
-  renderer.setClearColor(0x000000, 0);
-
-  container.appendChild(renderer.domElement);
-
-  return renderer;
-}
-
-/**
- * createCube
- * ----------
- * Creates a rotating cube mesh (BoxGeometry + MeshStandardMaterial) with
- * visible edge lines (EdgesGeometry + LineSegments) for a modern look.
- * Both the solid mesh and its edge wireframe are grouped together.
- *
- * @returns {THREE.Group} The cube group containing the mesh and its edges.
- */
-function createCube() {
-  const cubeGroup = new THREE.Group();
-  cubeGroup.name = 'cubeGroup';
-
-  // --- Solid cube mesh ---
-  const cubeSize = 1.15;
-  const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
-  const cubeMaterial = new THREE.MeshStandardMaterial({
-    color: 0x00d2ff,          // Cyan accent matching design system
-    roughness: 0.32,
-    metalness: 0.6,
-    emissive: 0x003d59,
-    emissiveIntensity: 0.3,
-  });
-  const cubeMesh = new THREE.Mesh(cubeGeometry, cubeMaterial);
-  cubeGroup.add(cubeMesh);
-
-  // --- Visible edge lines for modern aesthetic ---
-  const edgesGeometry = new THREE.EdgesGeometry(cubeGeometry);
-  const edgesMaterial = new THREE.LineBasicMaterial({
-    color: 0x66e5ff,          // Lighter cyan for edge contrast
-    transparent: true,
-    opacity: 0.55,
-  });
-  const edgeLines = new THREE.LineSegments(edgesGeometry, edgesMaterial);
-  cubeGroup.add(edgeLines);
-
-  // Position the cube above the ground plane
-  cubeGroup.position.set(0, 1.15, 0);
-
-  return cubeGroup;
-}
-
-// ---------------------------------------------------------------------------
-// Reserved: Navigation Arrow – used in Step 4 (WebXR)
-// ---------------------------------------------------------------------------
-
-/**
- * createArrow
- * -----------
- * Builds a flat, forward-pointing floor arrow from an extruded 2D shape.
- * The group origin is the arrow tail at floor level; the tip points along
- * +Z. An AR caller can place the group at a floor hit pose and yaw it
- * toward the next node with `rotation.y = Math.atan2(dx, dz)`.
- *
- * NOTE: This function is NOT called in the current build. It is reserved
- * for Sprint 4 (WebXR) where the arrow replaces the cube as the live
- * navigation indicator.
- *
- * @returns {THREE.Group} Arrow group with its origin at floor level.
- */
-function createArrow() {
-  const arrowAnchor = new THREE.Group();
-  arrowAnchor.name = 'arrowAnchor';
-
-  // Flat arrow outline in the XY plane, pointing along +Y (1 metre long)
-  const arrowShape = new THREE.Shape();
-  arrowShape.moveTo(-0.08, 0);
-  arrowShape.lineTo(-0.08, 0.55);
-  arrowShape.lineTo(-0.22, 0.55);
-  arrowShape.lineTo(0, 1.0);
-  arrowShape.lineTo(0.22, 0.55);
-  arrowShape.lineTo(0.08, 0.55);
-  arrowShape.lineTo(0.08, 0);
-  arrowShape.closePath();
-
-  // Extrude 4 cm, then lay the shape on the XZ floor plane (+Y becomes +Z)
-  const arrowGeometry = new THREE.ExtrudeGeometry(arrowShape, {
-    depth: 0.04,
-    bevelEnabled: false,
-    steps: 1,
-    curveSegments: 1
-  });
-  arrowGeometry.rotateX(Math.PI / 2);
-  arrowGeometry.translate(0, 0.04, 0);
-
-  // Unlit material: readable in AR without scene lights
-  const arrowMaterial = new THREE.MeshBasicMaterial({
-    color: 0x00d2ff,
-    side: THREE.DoubleSide,
-    toneMapped: false
-  });
-
-  const arrowMesh = new THREE.Mesh(arrowGeometry, arrowMaterial);
-  arrowAnchor.add(arrowMesh);
-
-  return arrowAnchor;
-}
-
-/**
- * createGroundShadow
- * ------------------
- * Generates a planar circular ground halo directly underneath the cube
- * using a procedural radial gradient canvas texture.
- *
- * @returns {THREE.Mesh} The ground shadow plane mesh.
- */
-function createGroundShadow() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
-  const context = canvas.getContext('2d');
-
-  // Radial gradient: cyan glow in center fading to transparent
-  const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gradient.addColorStop(0, 'rgba(0, 210, 255, 0.45)');
-  gradient.addColorStop(0.35, 'rgba(0, 150, 230, 0.25)');
-  gradient.addColorStop(0.75, 'rgba(10, 18, 40, 0.08)');
-  gradient.addColorStop(1, 'rgba(7, 9, 19, 0)');
-
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, 128, 128);
-
-  const shadowTexture = new THREE.CanvasTexture(canvas);
-
-  const shadowGeometry = new THREE.PlaneGeometry(2.8, 2.8);
-  const shadowMaterial = new THREE.MeshBasicMaterial({
-    map: shadowTexture,
-    transparent: true,
-    opacity: 0.75,
-    depthWrite: false,
-  });
-
-  const groundShadowMesh = new THREE.Mesh(shadowGeometry, shadowMaterial);
-  groundShadowMesh.rotation.x = -Math.PI / 2;
-  groundShadowMesh.position.set(0, 0.02, 0);
-
-  return groundShadowMesh;
-}
-
-/**
- * createLighting
- * --------------
- * Adds a lightweight 2-light setup: one soft ambient fill light and one
- * directional key light to produce specular highlights on the cube faces.
- * Limited to 2 lights for mobile performance.
- *
- * @param {THREE.Scene} scene – Scene to populate with lights.
- */
-function createLighting(scene) {
-  // Ambient fill light – soft overall illumination
-  const ambientLight = new THREE.AmbientLight(0xd5e6fb, 0.65);
-  scene.add(ambientLight);
-
-  // Directional key light – drives specular reflections on the cube
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.35);
-  directionalLight.position.set(4, 9, 6);
-  scene.add(directionalLight);
-}
-
-/**
- * createGridHelper
- * ----------------
- * Places a coordinate grid on the XZ floor plane. In combination with
- * scene exponential fog, it creates smooth horizon fading.
- *
- * @param {THREE.Scene} scene – Target scene.
- * @returns {THREE.GridHelper} The configured grid helper.
- */
-function createGridHelper(scene) {
-  const gridSize = 30;
-  const gridDivisions = 30;
-  const centerLineColor = 0x00d2ff; // Cyan accent for primary axis
-  const gridLineColor = 0x162035;   // Subtle slate blue for grid
-
-  const gridHelper = new THREE.GridHelper(
-    gridSize,
-    gridDivisions,
-    centerLineColor,
-    gridLineColor
-  );
-
-  gridHelper.position.set(0, 0, 0);
-  gridHelper.material.transparent = true;
-  gridHelper.material.opacity = 0.55;
-
-  scene.add(gridHelper);
-  return gridHelper;
-}
-
-// ---------------------------------------------------------------------------
-// Viewport & Orientation Handling
-// ---------------------------------------------------------------------------
-
-/**
- * handleWindowResize
- * ------------------
- * Synchronizes camera aspect ratio and renderer viewport dimensions whenever
- * the window is resized or device orientation changes.
- *
- * @param {THREE.PerspectiveCamera} camera – Active camera.
- * @param {THREE.WebGLRenderer} renderer – Active WebGL renderer.
- */
-function handleWindowResize(camera, renderer) {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-// ---------------------------------------------------------------------------
-// Render Animation Loop
-// ---------------------------------------------------------------------------
-
-/**
- * startAnimationLoop
- * ------------------
- * Registers the frame callback with Three.js. `setAnimationLoop` uses
- * requestAnimationFrame in normal mode and the XR frame loop inside a
- * WebXR session, which is required for immersive-ar rendering. The cube
- * rotates slowly on Y and slightly on X while floating up and down. The
- * ground shadow breathes in sync. Rendering is skipped while a modal
- * overlay covers the scene. Respects prefers-reduced-motion.
- *
- * @param {THREE.WebGLRenderer} renderer – Active renderer.
- * @param {THREE.Scene} scene – Active scene.
- * @param {THREE.PerspectiveCamera} camera – Active camera.
- * @param {THREE.Group} cubeGroup – The rotating cube group.
- * @param {THREE.Mesh} groundShadowMesh – The ground halo mesh.
- */
-function startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh) {
-  const clock = new THREE.Clock();
-  const baseCubeAltitudeY = 1.15;
-  const bobbingAmplitude = 0.1;
-  const bobbingFrequency = 1.5;
-  const rotationSpeedY = 0.4;  // Radians per second (slow Y rotation)
-  const rotationSpeedX = 0.15; // Radians per second (slight X tilt)
-
-  // Accessibility check for user motion preferences
-  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-  /**
-   * isSceneCoveredByUi
-   * ------------------
-   * Returns true while a full-screen modal hides the 3D scene.
-   *
-   * @returns {boolean} Whether rendering can be skipped for this frame.
-   */
-  function isSceneCoveredByUi() {
-    return Boolean(
-      (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) ||
-      (destinationSheetElement && destinationSheetElement.classList.contains('is-open'))
-    );
-  }
-
-  /**
-   * animate (inner)
-   * ---------------
-   * Single frame callback for the Three.js animation loop.
-   *
-   * @param {number} time – Elapsed time in milliseconds.
-   * @param {XRFrame} frame – Current WebXR frame (undefined outside AR).
-   */
-  function animate(time, frame) {
-    const arActive = Boolean(arGuide && arGuide.isActive);
-
-    if (arActive && frame) {
-      arGuide.update(frame);
-    }
-
-    // The floor plan is an HTML/SVG view; do not render the hidden 3D canvas.
-    const mapVisible = Boolean(mapViewElement && !mapViewElement.hidden);
-    if (!arActive && (mapVisible || isSceneCoveredByUi())) {
-      return;
-    }
-
-    const elapsedTime = clock.getElapsedTime();
-
-    if (!reducedMotionQuery.matches) {
-      // Slow rotation on Y axis + slight rotation on X
-      cubeGroup.rotation.y = elapsedTime * rotationSpeedY;
-      cubeGroup.rotation.x = elapsedTime * rotationSpeedX;
-
-      // Subtle vertical floating
-      const verticalOffset = Math.sin(elapsedTime * bobbingFrequency) * bobbingAmplitude;
-      cubeGroup.position.y = baseCubeAltitudeY + verticalOffset;
-
-      // Synchronized shadow breathing
-      if (groundShadowMesh) {
-        const shadowScale = 1.0 + verticalOffset * 0.7;
-        groundShadowMesh.scale.set(shadowScale, shadowScale, 1);
-        groundShadowMesh.material.opacity = 0.75 - verticalOffset * 0.8;
-      }
-    }
-
-    renderer.render(scene, camera);
-  }
-
-  // Kick off the loop (rAF normally, XR frames when a WebXR session is active)
-  renderer.setAnimationLoop(animate);
-}
-
-// ---------------------------------------------------------------------------
-// UI Interactions: Discreet Status Toast
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// UI helpers
+// ===========================================================================
 
 /**
  * showStatusToast
  * ---------------
- * Displays the discreet status toast under the header with a message and
- * auto-hides it after the specified duration.
- *
- * @param {string} message – Status message to display.
- * @param {number} durationMs – Time in milliseconds before fading out.
+ * @param {string} message – Text of the discreet status toast.
+ * @param {number} [durationMs=4200]
  */
 function showStatusToast(message, durationMs = 4200) {
   if (!statusToastElement || !statusMessageElement) return;
-
   statusMessageElement.textContent = message;
   statusToastElement.classList.remove('toast-hidden');
-
-  if (toastDismissTimerId) {
-    clearTimeout(toastDismissTimerId);
-  }
-
-  toastDismissTimerId = window.setTimeout(() => {
-    statusToastElement.classList.add('toast-hidden');
-    toastDismissTimerId = null;
-  }, durationMs);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => statusToastElement.classList.add('toast-hidden'), durationMs);
 }
 
-// ---------------------------------------------------------------------------
-// Accessibility: Modal Focus Management
-// ---------------------------------------------------------------------------
-
-/**
- * showRenderFallback
- * ------------------
- * Reveals the persistent 3D failure banner with a readable explanation.
- *
- * @param {string} message – User-facing fallback message.
- */
 function showRenderFallback(message) {
-  if (renderFallbackMessageElement && message) {
-    renderFallbackMessageElement.textContent = message;
-  }
-  if (renderFallbackElement) {
-    renderFallbackElement.hidden = false;
-  }
+  if (renderFallbackMessageElement && message) renderFallbackMessageElement.textContent = message;
+  if (renderFallbackElement) renderFallbackElement.hidden = false;
 }
+
+const levelLabel = (level) => (level === 0 ? 'Rez-de-chaussée' : `Étage ${level}`);
+const levelShort = (level) => (level === 0 ? 'RDC' : `E${level}`);
+const blockLabel = (block) => (block && block !== 'H' ? `Bloc ${block}` : 'Hall');
 
 /** Selector for elements that can receive keyboard focus. */
-const FOCUSABLE_SELECTOR = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])'
-].join(', ');
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-/**
- * getTabbableElements
- * -------------------
- * Returns the visible, non-inert focusable elements inside a container.
- *
- * @param {HTMLElement} container – Dialog or panel to inspect.
- * @returns {HTMLElement[]} Tabbable elements in DOM order.
- */
-function getTabbableElements(container) {
-  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter((element) => {
-    if (element.closest('[inert]')) return false;
-    if (window.getComputedStyle(element).visibility === 'hidden') return false;
-    return element.getClientRects().length > 0;
-  });
-}
-
-/**
- * trapFocus
- * ---------
- * Keeps Tab and Shift+Tab navigation inside an open dialog.
- *
- * @param {KeyboardEvent} event – Keydown event.
- * @param {HTMLElement} container – Open dialog.
- */
 function trapFocus(event, container) {
   if (event.key !== 'Tab') return;
-
-  const tabbableElements = getTabbableElements(container);
-  if (tabbableElements.length === 0) {
+  const items = [...container.querySelectorAll(FOCUSABLE_SELECTOR)]
+    .filter((element) => !element.closest('[inert]') && element.getClientRects().length > 0);
+  if (!items.length) { event.preventDefault(); return; }
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (!container.contains(document.activeElement)) {
     event.preventDefault();
-    return;
-  }
-
-  const firstElement = tabbableElements[0];
-  const lastElement = tabbableElements[tabbableElements.length - 1];
-  const activeElement = document.activeElement;
-
-  if (!container.contains(activeElement)) {
+    (event.shiftKey ? last : first).focus();
+  } else if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
-    (event.shiftKey ? lastElement : firstElement).focus();
-    return;
-  }
-
-  if (event.shiftKey && activeElement === firstElement) {
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
     event.preventDefault();
-    lastElement.focus();
-  } else if (!event.shiftKey && activeElement === lastElement) {
-    event.preventDefault();
-    firstElement.focus();
+    first.focus();
   }
 }
 
-// ---------------------------------------------------------------------------
-// UI Interactions: Scan Reticle Overlay (Camera + QR Detection)
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// Position & destination (NavigationService)
+// ===========================================================================
 
 /**
- * handleQrDetection
- * -----------------
- * Callback invoked when a QR code is successfully decoded from camera.
- * Updates current position and closes scanner overlay.
- *
- * @param {string} rawQrCode - Scanned QR code value.
- */
-function handleQrDetection(rawQrCode) {
-  const scannedKey = (rawQrCode || '').trim().toUpperCase();
-  console.log('[main] QR Code détecté :', scannedKey);
-
-  if (setCurrentNode(scannedKey)) {
-    if ('vibrate' in navigator) {
-      try { navigator.vibrate([100, 50, 100]); } catch (e) {}
-    }
-    const node = buildingGraph.getNode(scannedKey);
-    showStatusToast(`📍 Vous êtes ici : ${node.name}`, 6000);
-    closeScanOverlay();
-  } else if (!isGraphReady) {
-    showStatusToast('Plan du bâtiment en cours de chargement…', 3000);
-  } else {
-    showStatusToast(`⚠️ QR code inconnu : ${scannedKey}`, 3000);
-  }
-}
-
-/**
- * openScanOverlay
+ * setCurrentPlace
  * ---------------
- * Displays the scan viewfinder overlay, starts the camera feed, and activates
- * the QR code detection loop.
- */
-async function openScanOverlay() {
-  if (!scanOverlayElement) return;
-
-  if (uiOverlayElement) uiOverlayElement.inert = true;
-  if (destinationSheetElement) destinationSheetElement.inert = true;
-  if (mapViewElement) mapViewElement.inert = true;
-  scanOverlayElement.inert = false;
-  scanOverlayElement.classList.add('is-open');
-  scanOverlayElement.setAttribute('aria-hidden', 'false');
-  if (scanTriggerButton) scanTriggerButton.setAttribute('aria-expanded', 'true');
-  if (closeScanButton) {
-    closeScanButton.focus();
-  }
-
-  // Start live camera QR scanner
-  if (scanVideoElement && scanCanvasElement) {
-    try {
-      await qrScanner.start(scanVideoElement, scanCanvasElement);
-    } catch (error) {
-      console.warn('[main] Accès caméra refusé ou indisponible :', error);
-      showStatusToast('Accès à la caméra refusé ou non disponible', 4000);
-    }
-  }
-}
-
-/**
- * closeScanOverlay
- * ----------------
- * Closes the scan viewfinder overlay, stops the camera, and returns focus to the scanner button.
- */
-function closeScanOverlay() {
-  if (!scanOverlayElement) return;
-
-  // Stop camera feed and scanning loop
-  qrScanner.stop();
-
-  scanOverlayElement.classList.remove('is-open');
-  scanOverlayElement.setAttribute('aria-hidden', 'true');
-  scanOverlayElement.inert = true;
-  if (uiOverlayElement) uiOverlayElement.inert = false;
-  if (mapViewElement) mapViewElement.inert = false;
-  if (scanTriggerButton) {
-    scanTriggerButton.setAttribute('aria-expanded', 'false');
-    scanTriggerButton.focus();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// UI Interactions: Destination Bottom Sheet Mockup
-// ---------------------------------------------------------------------------
-
-/**
- * openDestinationSheet
- * --------------------
- * Opens the destination selection bottom sheet and focuses search input.
- */
-function openDestinationSheet() {
-  if (!destinationSheetElement || !sheetBackdropElement) return;
-
-  if (uiOverlayElement) uiOverlayElement.inert = true;
-  if (scanOverlayElement) scanOverlayElement.inert = true;
-  if (mapViewElement) mapViewElement.inert = true;
-  destinationSheetElement.inert = false;
-
-  sheetBackdropElement.classList.add('is-open');
-  sheetBackdropElement.setAttribute('aria-hidden', 'false');
-
-  destinationSheetElement.classList.add('is-open');
-  destinationSheetElement.setAttribute('aria-hidden', 'false');
-  if (destinationTriggerButton) destinationTriggerButton.setAttribute('aria-expanded', 'true');
-
-  if (destinationSearchInput) {
-    destinationSearchInput.value = '';
-    filterDestinations('');
-    // Focus search input after transition starts
-    setTimeout(() => destinationSearchInput.focus(), 150);
-  }
-}
-
-/**
- * closeDestinationSheet
- * ---------------------
- * Closes the destination bottom sheet and returns focus to destination button.
- */
-function closeDestinationSheet() {
-  if (!destinationSheetElement || !sheetBackdropElement) return;
-
-  destinationSheetElement.style.transform = '';
-
-  sheetBackdropElement.classList.remove('is-open');
-  sheetBackdropElement.setAttribute('aria-hidden', 'true');
-
-  destinationSheetElement.classList.remove('is-open');
-  destinationSheetElement.setAttribute('aria-hidden', 'true');
-  destinationSheetElement.inert = true;
-  if (uiOverlayElement) uiOverlayElement.inert = false;
-  if (mapViewElement) mapViewElement.inert = false;
-
-  if (destinationTriggerButton) {
-    destinationTriggerButton.setAttribute('aria-expanded', 'false');
-    destinationTriggerButton.focus();
-  }
-}
-
-/**
- * Presentation metadata for graph nodes that can be chosen as destinations.
- * Distances are always computed from the graph; nothing here is a distance.
- */
-const DESTINATION_VISUALS = {
-  ENTREE: { icon: '🚪', description: 'Entrée / sortie principale', tag: 'Sortie', alert: true },
-  HALL: { icon: '🏛️', description: 'Hall principal et accueil', tag: 'RDC' },
-  SALLE_B12: { icon: '💻', description: 'Laboratoire Réseaux & Télécoms', tag: 'RDC' },
-  SALLE_B14: { icon: '📚', description: 'Salle de cours', tag: 'RDC' },
-  SALLE_B15: { icon: '🧪', description: 'Salle de travaux pratiques', tag: 'RDC' },
-  LAB_INFO: { icon: '🖥️', description: 'Laboratoire informatique', tag: 'RDC' },
-  ADMIN: { icon: '🏢', description: 'Administration', tag: 'RDC' },
-  BIBLIO: { icon: '📖', description: 'Bibliothèque', tag: 'RDC' },
-  AMPHI_A: { icon: '🎓', description: 'Amphithéâtre A', tag: 'RDC' },
-  COULOIR_EST: { icon: '🚶', description: 'Couloir — accès B12, B14, Labo', tag: 'Couloir' },
-  COULOIR_SUD: { icon: '🚶', description: 'Couloir — accès B14', tag: 'Couloir' },
-  COULOIR_OUEST: { icon: '🚶', description: 'Couloir — accès B15, Administration', tag: 'Couloir' }
-};
-
-/** Presentation for a node added to building.json without visuals above. */
-const DEFAULT_DESTINATION_VISUALS = { icon: '📍', description: 'Point du plan', tag: 'RDC' };
-
-/** Circulation nodes are drawn as floor discs in 3D; every other node is a room. */
-const CIRCULATION_NODE_IDS = new Set(['ENTREE', 'HALL', 'COULOIR_EST', 'COULOIR_SUD', 'COULOIR_OUEST']);
-
-/**
- * getOrderedNodes
- * ---------------
- * Every graph node, in the DESTINATION_VISUALS order first, so the lists
- * show rooms before corridors and still include any new node.
+ * Applies a place as the current position (QR scan or start picker).
  *
- * @returns {Array<{id:string,name:string,x:number,y:number}>} Ordered nodes.
+ * @param {string} placeId – Place id, room code or alias.
+ * @param {string} source – 'qr' | 'manual'.
+ * @returns {boolean} True when the place exists.
  */
-function getOrderedNodes() {
-  const order = Object.keys(DESTINATION_VISUALS);
-  const rank = (id) => (order.includes(id) ? order.indexOf(id) : order.length);
-  return buildingGraph.getAllNodes().sort((a, b) => rank(a.id) - rank(b.id));
-}
-
-/**
- * getDestinationDistance
- * ----------------------
- * Returns the Dijkstra distance from the current QR node, or null when the
- * position is unknown or no route exists.
- *
- * @param {string} destinationId – Target graph node.
- * @returns {number|null} Distance in metres.
- */
-function getDestinationDistance(destinationId) {
-  if (!isGraphReady || !currentQrNodeId) {
-    return null;
-  }
-  if (currentQrNodeId === destinationId) {
-    return 0;
-  }
-  const path = buildingGraph.findShortestPath(currentQrNodeId, destinationId);
-  if (path.length < 2) return null;
-  return buildingGraph.getPathDistance(path);
-}
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-/** Short labels keep the schematic floor plan readable on a phone. */
-const MAP_SHORT_LABELS = {
-  ENTREE: 'Entrée',
-  HALL: 'Hall',
-  SALLE_B12: 'B12',
-  SALLE_B14: 'B14',
-  SALLE_B15: 'B15',
-  LAB_INFO: 'Labo',
-  ADMIN: 'Admin',
-  BIBLIO: 'Biblio',
-  AMPHI_A: 'Amphi A'
-};
-
-/**
- * createSvgElement
- * ----------------
- * Small helper for the interactive floor plan.
- *
- * @param {string} tag – SVG tag name.
- * @param {Object} attributes – Attribute map.
- * @returns {SVGElement} Created element.
- */
-function createSvgElement(tag, attributes) {
-  const element = document.createElementNS(SVG_NS, tag);
-  for (const [name, value] of Object.entries(attributes)) {
-    element.setAttribute(name, String(value));
-  }
-  return element;
-}
-
-/**
- * updateMapHint
- * -------------
- * Describes the current demo state below the map.
- */
-function updateMapHint() {
-  if (!mapHintElement) return;
-
-  if (!isGraphReady) {
-    mapHintElement.textContent = 'Chargement du plan du bâtiment…';
-    return;
-  }
-  if (!currentQrNodeId) {
-    mapHintElement.textContent = mapViewMode === '3d'
-      ? 'Démo : touchez une salle pour simuler un scan QR · glissez pour pivoter.'
-      : 'Démo : cliquez sur un nœud pour simuler un scan QR.';
-    return;
-  }
-
-  const currentNode = buildingGraph.getNode(currentQrNodeId);
-  if (!currentDestinationId) {
-    mapHintElement.textContent =
-      `Position : ${currentNode ? currentNode.name : currentQrNodeId}. Choisissez une destination.`;
-    return;
-  }
-  if (currentRoutePath.length > 1) {
-    mapHintElement.textContent =
-      `Itinéraire : ${Math.round(currentRouteDistance)} m · ` +
-      `${currentRoutePath.length - 1} étapes — suivez la ligne cyan.`;
-    return;
-  }
-  mapHintElement.textContent = 'Aucun itinéraire disponible depuis cette position.';
-}
-
-/**
- * renderMap
- * ---------
- * Draws the real building graph as an interactive SVG floor plan. Nodes are
- * clickable in demo mode; the Dijkstra path is highlighted in cyan.
- */
-function renderMap() {
-  if (!mapSvgElement || !isGraphReady) {
-    updateMapHint();
-    return;
-  }
-
-  syncFloorView3D();
-
-  const nodes = buildingGraph.getAllNodes();
-  const edges = buildingGraph.getEdges();
-  if (nodes.length === 0) return;
-
-  const width = 360;
-  const height = 640;
-  const padding = 38;
-  const minX = Math.min(...nodes.map((node) => node.x));
-  const maxX = Math.max(...nodes.map((node) => node.x));
-  const minY = Math.min(...nodes.map((node) => node.y));
-  const maxY = Math.max(...nodes.map((node) => node.y));
-  const scale = Math.min(
-    (width - padding * 2) / Math.max(maxX - minX, 1),
-    (height - padding * 2) / Math.max(maxY - minY, 1)
-  );
-  const offsetX = (width - (maxX - minX) * scale) / 2;
-  const offsetY = (height - (maxY - minY) * scale) / 2;
-
-  const project = (node) => ({
-    x: offsetX + (node.x - minX) * scale,
-    y: height - offsetY - (node.y - minY) * scale
-  });
-
-  const positions = new Map();
-  for (const node of nodes) {
-    positions.set(node.id, project(node));
-  }
-
-  const routeEdges = new Set();
-  for (let index = 0; index < currentRoutePath.length - 1; index++) {
-    const from = currentRoutePath[index];
-    const to = currentRoutePath[index + 1];
-    routeEdges.add(`${from}|${to}`);
-    routeEdges.add(`${to}|${from}`);
-  }
-
-  mapSvgElement.replaceChildren();
-
-  const edgeGroup = createSvgElement('g', { 'aria-hidden': 'true' });
-  for (const edge of edges) {
-    const from = positions.get(edge.from);
-    const to = positions.get(edge.to);
-    if (!from || !to) continue;
-
-    const line = createSvgElement('line', {
-      x1: from.x,
-      y1: from.y,
-      x2: to.x,
-      y2: to.y,
-      class: `map-edge${routeEdges.has(`${edge.from}|${edge.to}`) ? ' route' : ''}`
-    });
-    edgeGroup.appendChild(line);
-  }
-  mapSvgElement.appendChild(edgeGroup);
-
-  const nodeGroup = createSvgElement('g', {});
-  for (const node of nodes) {
-    const point = positions.get(node.id);
-    const group = createSvgElement('g', {
-      class: [
-        'map-node',
-        currentQrNodeId === node.id ? 'current' : '',
-        currentDestinationId === node.id ? 'destination' : ''
-      ].filter(Boolean).join(' '),
-      tabindex: '0',
-      role: 'button',
-      'data-node-id': node.id,
-      'aria-label': `Se positionner à ${node.name}`
-    });
-
-    group.appendChild(createSvgElement('circle', {
-      cx: point.x,
-      cy: point.y,
-      r: 7,
-      class: 'map-node-circle'
-    }));
-
-    const isCurrent = currentQrNodeId === node.id;
-    const isDestination = currentDestinationId === node.id;
-    const shortLabel = MAP_SHORT_LABELS[node.id];
-    const showLabel = Boolean(shortLabel) || isCurrent || isDestination;
-
-    if (showLabel) {
-      const isTopRow = Math.abs(node.y) < 1;
-      const labelOnLeft = !isTopRow && node.x < 15;
-      const labelX = isTopRow
-        ? point.x
-        : point.x + (labelOnLeft ? -11 : 11);
-      const labelY = isTopRow ? point.y - 12 : point.y + 3;
-      const label = createSvgElement('text', {
-        x: labelX,
-        y: labelY,
-        class: 'map-node-label',
-        'text-anchor': isTopRow ? 'middle' : (labelOnLeft ? 'end' : 'start')
-      });
-      label.textContent = shortLabel || node.name;
-      group.appendChild(label);
-    }
-
-    nodeGroup.appendChild(group);
-  }
-  mapSvgElement.appendChild(nodeGroup);
-
-  updateMapHint();
-}
-
-/**
- * setCurrentNode
- * --------------
- * Applies a graph node as the current position. Used by both a real QR scan
- * and the explicit demo click on the floor plan.
- *
- * @param {string} nodeId – Graph node ID.
- * @returns {boolean} True when the node exists.
- */
-function setCurrentNode(nodeId) {
-  const node = buildingGraph.getNode(nodeId);
-  if (!node) return false;
-
-  currentQrNodeId = nodeId;
-  updatePositionChip();
-  renderDestinationList();
-  renderMap();
-
-  if (currentDestinationId) {
-    updateRouteForCurrentDestination();
-  }
-
+function setCurrentPlace(placeId, source) {
+  const place = campus && campus.getPlace(placeId);
+  if (!place) return false;
+  setCurrentPosition({ level: place.level, x: place.x, y: place.y, name: place.name, placeId: place.id, source });
   return true;
 }
 
 /**
- * simulatePosition
- * ----------------
- * Demo-only entry point: clicking a graph node simulates a QR scan.
- * The label makes the simulation explicit to the jury.
- *
- * @param {string} nodeId – Graph node ID.
+ * setCurrentPosition
+ * ------------------
+ * Observer entry point: every position change refreshes the chip, the
+ * distances, the route and the 3D view.
  */
-function simulatePosition(nodeId) {
-  if (!setCurrentNode(nodeId)) return;
-  const node = buildingGraph.getNode(nodeId);
-  showStatusToast(`Démo — vous êtes ici : ${node.name}`, 4000);
+function setCurrentPosition(position) {
+  currentPosition = position;
+  updatePositionChip();
+  distanceCacheKey = '';
+  scheduleDistanceUpdate();
+  updateRoute();
+
+  if (currentDestinationId && position.placeId === currentDestinationId) {
+    if ('vibrate' in navigator) {
+      try { navigator.vibrate([200, 100, 200]); } catch (error) { /* not supported */ }
+    }
+    showStatusToast('🎉 Vous êtes arrivé à destination', 6000);
+  }
+}
+
+function currentEndpoint() {
+  if (!currentPosition) return null;
+  return currentPosition.placeId || { level: currentPosition.level, x: currentPosition.x, y: currentPosition.y };
+}
+
+function updatePositionChip() {
+  if (positionChipElement) positionChipElement.hidden = !currentPosition;
+  if (positionLabelElement) {
+    positionLabelElement.textContent = currentPosition
+      ? `${currentPosition.name} (${levelShort(currentPosition.level)})`
+      : '—';
+  }
+  if (startSelectElement) startSelectElement.value = currentPosition && currentPosition.placeId ? currentPosition.placeId : '';
 }
 
 /**
- * setARView
- * ---------
- * Switches between the floor-plan home screen and the AR canvas.
- *
- * @param {boolean} isAR – True while an immersive-ar session is active.
+ * selectDestination
+ * -----------------
+ * @param {string} placeId – Destination place id.
  */
-function setARView(isAR) {
-  if (mapViewElement) mapViewElement.hidden = isAR;
-  if (sceneContainer) sceneContainer.classList.toggle('is-ar-active', isAR);
-  if (floorView3D) floorView3D.setActive(!isAR && mapViewMode === '3d');
+function selectDestination(placeId) {
+  const place = campus.getPlace(placeId);
+  if (!place) return;
+  currentDestinationId = place.id;
+  showStatusToast(`Destination : ${place.name}`, 3500);
+  closeDestinationSheet();
+  updateRoute();
+  renderDestinationList();
 }
 
 /**
- * getRoutePanelOcclusion
- * ----------------------
- * Pixels of the 3D canvas covered by the route panel, so the 3D camera
- * centres the route in the part of the screen that stays visible.
- *
- * @returns {number} Covered height in CSS pixels.
+ * updateRoute
+ * -----------
+ * Recomputes the multi-floor route (Dijkstra, current strategy) and refreshes
+ * the route panel and the 3D view.
  */
+function updateRoute() {
+  if (!campus) return;
+  const destination = currentDestinationId ? campus.getPlace(currentDestinationId) : null;
+  currentRoute = null;
+  if (destination && currentPosition) {
+    currentRoute = router.findRoute(currentEndpoint(), destination.id);
+  }
+  renderRoutePanel(destination);
+  if (view) {
+    view.setState({ current: currentPosition, destination, route: currentRoute });
+    if (compass.heading !== null) view.setHeading(compass.heading);
+  }
+  updateMapHint();
+  updateFloorTabs();
+}
+
+function renderRoutePanel(destination) {
+  if (!routePanelElement) return;
+  if (!destination) {
+    routePanelElement.classList.remove('is-open');
+    routePanelElement.hidden = true;
+    return;
+  }
+  routeTitleElement.textContent = `${destination.name} · ${levelShort(destination.level)}`;
+  routeStepsElement.replaceChildren();
+  startArButton.disabled = true;
+
+  if (!currentPosition) {
+    routeSummaryElement.textContent = 'Scannez un QR code ou choisissez un départ pour calculer l’itinéraire.';
+  } else if (!currentRoute || !currentRoute.found) {
+    routeSummaryElement.textContent = currentRoute && currentRoute.reason ? currentRoute.reason : 'Aucun itinéraire disponible.';
+  } else if (currentRoute.distance === 0 && !currentRoute.legs.length) {
+    routeSummaryElement.textContent = 'Vous êtes déjà sur place.';
+  } else {
+    const floorsChanged = currentRoute.steps.filter((s) => s.kind === 'stairs' || s.kind === 'lift').length;
+    const connectorSeconds = currentRoute.steps.reduce((sum, s) => sum + (s.kind === 'stairs' ? 20 : s.kind === 'lift' ? 45 : 0), 0);
+    const minutes = Math.max(1, Math.round((currentRoute.distance / WALKING_SPEED + connectorSeconds) / 60));
+    routeSummaryElement.textContent =
+      `${Math.round(currentRoute.distance)} m · ≈ ${minutes} min` +
+      (floorsChanged ? ` · ${floorsChanged} changement${floorsChanged > 1 ? 's' : ''} d’étage` : '') +
+      (currentRoute.approximate ? ' · accès à confirmer' : '');
+
+    let index = 0;
+    for (const step of currentRoute.steps) {
+      const item = document.createElement('li');
+      item.className = 'route-step';
+      if (step.kind === 'warning') item.classList.add('is-warning');
+      if (step.kind === 'stairs' || step.kind === 'lift') item.classList.add('is-connector');
+      const badge = document.createElement('span');
+      badge.className = 'route-step-index';
+      badge.textContent = step.kind === 'start' ? '•' : step.kind === 'arrive' ? '★' : step.kind === 'stairs' ? '▤' : step.kind === 'lift' ? '⇅' : step.kind === 'warning' ? '!' : String(++index);
+      const label = document.createElement('span');
+      label.className = 'route-step-name';
+      label.textContent = step.text;
+      item.append(badge, label);
+      if (step.kind === 'walk') {
+        const distance = document.createElement('span');
+        distance.className = 'route-step-distance';
+        distance.textContent = shortCardinal(step.bearing);
+        item.appendChild(distance);
+      }
+      routeStepsElement.appendChild(item);
+    }
+    startArButton.disabled = false;
+  }
+
+  routePanelElement.hidden = false;
+  routePanelElement.classList.add('is-compact');
+  requestAnimationFrame(() => {
+    routePanelElement.classList.add('is-open');
+    if (view) view.resize();
+  });
+}
+
+function hideRoutePanel() {
+  routePanelElement.classList.remove('is-open');
+  routePanelElement.hidden = true;
+  if (view) view.resize();
+}
+
+function updateMapHint() {
+  if (!mapHintElement) return;
+  if (!campus) { mapHintElement.textContent = 'Chargement du plan de SUP’COM…'; return; }
+  if (surveyMode) {
+    mapHintElement.textContent = passageStart
+      ? 'Relevé : touchez l’autre côté du passage manquant.'
+      : 'Relevé : touchez une salle pour la nommer.';
+    return;
+  }
+  if (!currentPosition) {
+    mapHintElement.textContent = 'Scannez un QR code, choisissez un départ, ou touchez le plan pour vous placer.';
+    return;
+  }
+  if (currentRoute && currentRoute.found && currentRoute.distance > 0) {
+    mapHintElement.textContent = 'Suivez la ligne cyan · glissez pour pivoter, pincez pour zoomer.';
+    return;
+  }
+  mapHintElement.textContent = `Position : ${currentPosition.name}. Choisissez une destination.`;
+}
+
+// ===========================================================================
+// Distances for the destination list (one Dijkstra pass, deferred)
+// ===========================================================================
+
+let distanceTimer = null;
+function scheduleDistanceUpdate() {
+  clearTimeout(distanceTimer);
+  distanceTimer = setTimeout(() => {
+    const endpoint = currentEndpoint();
+    const key = endpoint ? `${JSON.stringify(endpoint)}|${router.strategy.label}` : '';
+    if (!endpoint || key === distanceCacheKey) return;
+    distanceCache = router.distancesFrom(endpoint);
+    distanceCacheKey = key;
+    renderDestinationList();
+  }, 120);
+}
+
+// ===========================================================================
+// Destination sheet & start picker
+// ===========================================================================
+
+const KIND_ICON = { amphi: '🎓', place: '🏛️', room: '🚪', stairs: '▤', lift: '⇅' };
+const KIND_ORDER = { amphi: 0, place: 1, stairs: 2, lift: 3, room: 4 };
+
+function sortedPlaces() {
+  return campus.getPlaces().sort((a, b) =>
+    (b.official || b.surveyed ? 1 : 0) - (a.official || a.surveyed ? 1 : 0) ||
+    (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) ||
+    a.level - b.level ||
+    String(a.code || a.id).localeCompare(String(b.code || b.id), 'fr', { numeric: true }));
+}
+
+function renderStartOptions() {
+  if (!startSelectElement || !campus) return;
+  const placeholder = startSelectElement.querySelector('option[value=""]');
+  startSelectElement.replaceChildren();
+  if (placeholder) startSelectElement.appendChild(placeholder);
+  const groups = new Map();
+  for (const place of sortedPlaces()) {
+    const key = place.official || place.surveyed ? 'Lieux principaux' : levelLabel(place.level);
+    if (!groups.has(key)) {
+      const group = document.createElement('optgroup');
+      group.label = key;
+      groups.set(key, group);
+      startSelectElement.appendChild(group);
+    }
+    const option = document.createElement('option');
+    option.value = place.id;
+    option.textContent = `${place.name} — ${levelShort(place.level)}`;
+    groups.get(key).appendChild(option);
+  }
+  startSelectElement.value = currentPosition && currentPosition.placeId ? currentPosition.placeId : '';
+}
+
+function renderDestinationList() {
+  if (!destinationListScroll) return;
+  destinationListScroll.querySelectorAll('.destination-item').forEach((item) => item.remove());
+  if (!campus) return;
+  if (destinationsLoadingElement) destinationsLoadingElement.style.display = 'none';
+
+  const fragment = document.createDocumentFragment();
+  for (const place of sortedPlaces()) {
+    const item = document.createElement('article');
+    item.className = 'destination-item';
+    item.setAttribute('role', 'button');
+    item.setAttribute('tabindex', '0');
+    item.setAttribute('aria-pressed', String(currentDestinationId === place.id));
+    item.dataset.destinationId = place.id;
+
+    const icon = document.createElement('div');
+    icon.className = 'dest-icon-badge';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = KIND_ICON[place.kind] || '📍';
+
+    const details = document.createElement('div');
+    details.className = 'dest-details';
+    const name = document.createElement('div');
+    name.className = 'dest-name';
+    name.textContent = place.name;
+    const description = document.createElement('div');
+    description.className = 'dest-description';
+    description.textContent = [
+      blockLabel(place.block),
+      levelLabel(place.level),
+      place.area ? `${place.area} m²` : null,
+      place.code && place.code !== place.id ? place.code : null,
+      !place.official && !place.surveyed && place.kind === 'room' ? 'nom à relever' : null
+    ].filter(Boolean).join(' · ');
+    details.append(name, description);
+
+    const meta = document.createElement('div');
+    meta.className = 'dest-meta';
+    const tag = document.createElement('span');
+    tag.className = 'dest-tag';
+    tag.textContent = levelShort(place.level);
+    const distance = document.createElement('span');
+    distance.className = 'dest-distance';
+    if (currentPosition && currentPosition.placeId === place.id) distance.textContent = 'Départ';
+    else if (!currentPosition) distance.textContent = '—';
+    else if (distanceCache.has(place.id)) distance.textContent = `${Math.round(distanceCache.get(place.id))} m`;
+    else distance.textContent = distanceCacheKey ? 'accès ?' : '…';
+    meta.append(tag, distance);
+
+    item.append(icon, details, meta);
+    fragment.appendChild(item);
+  }
+  if (noDestinationsFoundMsg) destinationListScroll.insertBefore(fragment, noDestinationsFoundMsg);
+  else destinationListScroll.appendChild(fragment);
+  filterDestinations(destinationSearchInput ? destinationSearchInput.value : '');
+}
+
+function filterDestinations(query) {
+  const normalized = normalize(query);
+  let visible = 0;
+  destinationListScroll.querySelectorAll('.destination-item').forEach((item) => {
+    const match = !normalized || normalize(item.textContent).includes(normalized) ||
+      normalize(item.dataset.destinationId).includes(normalized);
+    item.style.display = match ? 'flex' : 'none';
+    if (match) visible++;
+  });
+  if (noDestinationsFoundMsg) noDestinationsFoundMsg.style.display = visible ? 'none' : 'block';
+}
+
+const normalize = (text) => (text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+function openDestinationSheet() {
+  if (!destinationSheetElement || !campus) return;
+  uiOverlayElement.inert = true;
+  mapViewElement.inert = true;
+  destinationSheetElement.inert = false;
+  sheetBackdropElement.classList.add('is-open');
+  destinationSheetElement.classList.add('is-open');
+  destinationSheetElement.setAttribute('aria-hidden', 'false');
+  destinationTriggerButton.setAttribute('aria-expanded', 'true');
+  destinationSearchInput.value = '';
+  renderDestinationList();
+  setTimeout(() => destinationSearchInput.focus(), 150);
+}
+
+function closeDestinationSheet() {
+  if (!destinationSheetElement) return;
+  destinationSheetElement.style.transform = '';
+  sheetBackdropElement.classList.remove('is-open');
+  destinationSheetElement.classList.remove('is-open');
+  destinationSheetElement.setAttribute('aria-hidden', 'true');
+  destinationSheetElement.inert = true;
+  uiOverlayElement.inert = false;
+  mapViewElement.inert = false;
+  destinationTriggerButton.setAttribute('aria-expanded', 'false');
+}
+
+function setupTouchDismissSheet(sheet, handle) {
+  if (!sheet || !handle) return;
+  let startY = 0;
+  let currentY = 0;
+  const reset = () => { sheet.style.transform = ''; startY = currentY = 0; };
+  handle.addEventListener('touchstart', (e) => { startY = currentY = e.touches[0].clientY; }, { passive: true });
+  handle.addEventListener('touchmove', (e) => {
+    currentY = e.touches[0].clientY;
+    const delta = currentY - startY;
+    sheet.style.transform = delta > 0 ? `translateY(${Math.min(delta, 200)}px)` : '';
+  }, { passive: true });
+  handle.addEventListener('touchend', () => {
+    const dismiss = currentY - startY > 60;
+    reset();
+    if (dismiss) closeDestinationSheet();
+  });
+  handle.addEventListener('touchcancel', reset);
+}
+
+// ===========================================================================
+// QR scanner
+// ===========================================================================
+
+function handleQrDetection(rawQrCode) {
+  const value = (rawQrCode || '').trim();
+  if (!campus) { showStatusToast('Plan du campus en cours de chargement…', 3000); return; }
+  if (setCurrentPlace(value, 'qr')) {
+    if ('vibrate' in navigator) {
+      try { navigator.vibrate([100, 50, 100]); } catch (error) { /* not supported */ }
+    }
+    const place = campus.getPlace(value);
+    showStatusToast(`📍 Vous êtes ici : ${place.name} (${levelShort(place.level)})`, 6000);
+    closeScanOverlay();
+    if (view) view.focusPlace(place);
+  } else {
+    showStatusToast(`⚠️ QR code inconnu : ${value}`, 3500);
+  }
+}
+
+async function openScanOverlay() {
+  if (!scanOverlayElement) return;
+  uiOverlayElement.inert = true;
+  mapViewElement.inert = true;
+  scanOverlayElement.inert = false;
+  scanOverlayElement.classList.add('is-open');
+  scanOverlayElement.setAttribute('aria-hidden', 'false');
+  scanTriggerButton.setAttribute('aria-expanded', 'true');
+  closeScanButton.focus();
+  try {
+    await qrScanner.start(scanVideoElement, scanCanvasElement);
+  } catch (error) {
+    console.warn('[main] Caméra indisponible :', error);
+    showStatusToast('Accès à la caméra refusé ou non disponible', 4000);
+  }
+}
+
+function closeScanOverlay() {
+  if (!scanOverlayElement) return;
+  qrScanner.stop();
+  scanOverlayElement.classList.remove('is-open');
+  scanOverlayElement.setAttribute('aria-hidden', 'true');
+  scanOverlayElement.inert = true;
+  uiOverlayElement.inert = false;
+  mapViewElement.inert = false;
+  scanTriggerButton.setAttribute('aria-expanded', 'false');
+  scanTriggerButton.focus();
+}
+
+// ===========================================================================
+// 3D view, floors, map taps
+// ===========================================================================
+
+function updateFloorTabs() {
+  if (!floorTabsElement || !view) return;
+  const shown = view.showAllFloors ? 'all' : String(view.getFloor());
+  floorTabsElement.querySelectorAll('[data-floor]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.floor === shown));
+  });
+  if (mapEyebrowElement) {
+    mapEyebrowElement.textContent = `Campus El Ghazala · ${view.showAllFloors ? 'Tous les niveaux' : levelLabel(view.getFloor())}`;
+  }
+}
+
 function getRoutePanelOcclusion() {
   if (!map3dElement || !routePanelElement || routePanelElement.hidden) return 0;
   const canvasRect = map3dElement.getBoundingClientRect();
@@ -1145,475 +606,262 @@ function getRoutePanelOcclusion() {
 }
 
 /**
- * ensureFloorView3D
- * -----------------
- * Creates the 3D floor view on first use.
- *
- * @returns {boolean} True when the 3D view is available.
+ * placeAt
+ * -------
+ * Room or place under a point of the plan (smallest room bbox first).
  */
-function ensureFloorView3D() {
-  if (floorView3D) return true;
-  if (!map3dElement) return false;
-
-  const view = new FloorView3D({
-    container: map3dElement,
-    labels: MAP_SHORT_LABELS,
-    // Works even if the 3D view is created before building.json has loaded
-    roomIds: { has: (id) => !CIRCULATION_NODE_IDS.has(id) },
-    onNodeTap: (nodeId) => simulatePosition(nodeId),
-    getBottomOcclusion: getRoutePanelOcclusion
-  });
-  if (!view.init()) return false;
-
-  floorView3D = view;
-  if (isGraphReady) {
-    floorView3D.setGraph(buildingGraph.getAllNodes(), buildingGraph.getEdges());
+function placeAt(level, x, y) {
+  let best = null;
+  for (const place of campus.getPlaces()) {
+    if (place.level !== level) continue;
+    if (place.bbox) {
+      const [x0, y0, x1, y1] = place.bbox;
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) {
+        const area = (x1 - x0) * (y1 - y0);
+        if (!best || area < best.area) best = { place, area };
+      }
+    }
   }
-  syncFloorView3D();
-  return true;
+  if (best) return best.place;
+  let nearest = null;
+  for (const place of campus.getPlaces()) {
+    if (place.level !== level) continue;
+    const distance = Math.hypot(place.x - x, place.y - y);
+    if (distance < 6 && (!nearest || distance < nearest.distance)) nearest = { place, distance };
+  }
+  return nearest ? nearest.place : null;
 }
 
-/**
- * syncFloorView3D
- * ---------------
- * Pushes the current position, destination and route to the 3D view.
- */
-function syncFloorView3D() {
-  if (!floorView3D || !isGraphReady) return;
-
-  const names = {};
-  for (const node of buildingGraph.getAllNodes()) names[node.id] = node.name;
-
-  floorView3D.setState({
-    currentId: currentQrNodeId,
-    destinationId: currentDestinationId,
-    path: currentRoutePath,
-    names
+function handleMapPick({ level, x, y, outdoor }) {
+  if (surveyMode) {
+    handleSurveyPick(level, x, y);
+    return;
+  }
+  const place = placeAt(level, x, y);
+  setCurrentPosition({
+    level,
+    x,
+    y,
+    name: place ? place.name : outdoor ? 'Extérieur (point du plan)' : `Point du plan (${levelShort(level)})`,
+    placeId: null,
+    source: 'map'
   });
+  showStatusToast(`Démo — position placée : ${place ? place.name : 'point du plan'} (${levelShort(level)})`, 3500);
 }
 
-/**
- * setMapViewMode
- * --------------
- * Switches the floor plan between the 2D SVG graph and the 3D model.
- *
- * @param {'2d'|'3d'} mode – Requested display mode.
- * @returns {boolean} True when the requested mode is shown.
- */
-function setMapViewMode(mode) {
-  let nextMode = mode;
-  if (nextMode === '3d' && !ensureFloorView3D()) {
-    showStatusToast('Vue 3D indisponible sur ce navigateur (WebGL)', 4500);
-    nextMode = '2d';
-  }
+// ===========================================================================
+// Survey mode
+// ===========================================================================
 
-  mapViewMode = nextMode;
-  const is3d = mapViewMode === '3d';
-
-  if (mapSvgElement) {
-    if (is3d) mapSvgElement.setAttribute('hidden', '');
-    else mapSvgElement.removeAttribute('hidden');
-  }
-  if (map3dElement) map3dElement.hidden = !is3d;
-  if (view2dButton) view2dButton.setAttribute('aria-pressed', String(!is3d));
-  if (view3dButton) view3dButton.setAttribute('aria-pressed', String(is3d));
-  if (routePanelElement) routePanelElement.classList.toggle('is-compact', is3d);
-
-  const arActive = Boolean(arGuide && arGuide.isActive);
-  if (floorView3D) floorView3D.setActive(is3d && !arActive);
-
+function setSurveyMode(enabled) {
+  surveyMode = enabled;
+  surveyButton.setAttribute('aria-pressed', String(enabled));
+  surveyPanelElement.hidden = !enabled;
+  surveySelection = null;
+  passageStart = null;
+  surveyPassageButton.setAttribute('aria-pressed', 'false');
+  surveyNameInput.value = '';
+  surveyNameInput.disabled = true;
+  surveySaveButton.disabled = true;
+  surveyHelpElement.textContent = 'Touchez une salle sur le plan pour lui donner le nom affiché sur sa porte.';
+  updateSurveyCount();
   updateMapHint();
-  return nextMode === mode;
 }
 
-/**
- * updateStartArLabel
- * ------------------
- * The route button starts immersive-ar when supported, otherwise the 3D view.
- */
-function updateStartArLabel() {
-  if (startArLabelElement) {
-    startArLabelElement.textContent = isArSupported ? 'Guidage AR' : 'Voir en 3D';
-  }
-}
-
-/**
- * createDestinationItem
- * ---------------------
- * Builds one destination button from graph data + presentation metadata.
- *
- * @param {string} destinationId – Graph node ID.
- * @param {{name:string}} node – Graph node.
- * @param {Object} visuals – Icon, description and tag.
- * @returns {HTMLElement} Destination button element.
- */
-function createDestinationItem(destinationId, node, visuals) {
-  const item = document.createElement('article');
-  item.className = 'destination-item';
-  item.setAttribute('role', 'button');
-  item.setAttribute('tabindex', '0');
-  item.setAttribute('aria-pressed', String(currentDestinationId === destinationId));
-  item.dataset.destinationId = destinationId;
-  item.dataset.destinationName = node.name;
-
-  const icon = document.createElement('div');
-  icon.className = `dest-icon-badge${visuals.alert ? ' alert-type' : ''}`;
-  icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = visuals.icon;
-
-  const details = document.createElement('div');
-  details.className = 'dest-details';
-
-  const name = document.createElement('div');
-  name.className = 'dest-name';
-  name.textContent = node.name;
-
-  const description = document.createElement('div');
-  description.className = 'dest-description';
-  description.textContent = visuals.description;
-
-  details.append(name, description);
-
-  const meta = document.createElement('div');
-  meta.className = 'dest-meta';
-
-  const tag = document.createElement('span');
-  tag.className = `dest-tag${visuals.alert ? ' alert-tag' : ''}`;
-  tag.textContent = visuals.tag;
-
-  const distance = document.createElement('span');
-  distance.className = 'dest-distance';
-  const distanceMetres = getDestinationDistance(destinationId);
-  if (currentQrNodeId === destinationId) {
-    distance.textContent = 'Départ';
-  } else {
-    distance.textContent = distanceMetres === null ? '—' : `${Math.round(distanceMetres)} m`;
-  }
-
-  meta.append(tag, distance);
-  item.append(icon, details, meta);
-
-  return item;
-}
-
-/**
- * renderDestinationList
- * ---------------------
- * Replaces the hard-coded room list with destinations from building.json.
- */
-function renderDestinationList() {
-  if (!destinationListScroll) return;
-
-  const query = destinationSearchInput ? destinationSearchInput.value : '';
-  destinationListScroll.querySelectorAll('.destination-item').forEach((item) => item.remove());
-
-  if (!isGraphReady) {
-    if (destinationsLoadingElement) {
-      destinationsLoadingElement.style.display = 'block';
-      destinationsLoadingElement.textContent = 'Chargement du plan du bâtiment…';
-    }
-    if (noDestinationsFoundMsg) noDestinationsFoundMsg.style.display = 'none';
-    return;
-  }
-
-  if (destinationsLoadingElement) destinationsLoadingElement.style.display = 'none';
-
-  let renderedCount = 0;
-  for (const node of getOrderedNodes()) {
-    const destinationId = node.id;
-    const visuals = DESTINATION_VISUALS[destinationId] || DEFAULT_DESTINATION_VISUALS;
-
-    const item = createDestinationItem(destinationId, node, visuals);
-    if (noDestinationsFoundMsg) {
-      destinationListScroll.insertBefore(item, noDestinationsFoundMsg);
+function handleSurveyPick(level, x, y) {
+  if (surveyPassageButton.getAttribute('aria-pressed') === 'true') {
+    if (!passageStart) {
+      passageStart = { level, x, y };
+      surveyHelpElement.textContent = 'Passage : touchez maintenant l’autre côté de la porte manquante.';
     } else {
-      destinationListScroll.appendChild(item);
+      if (passageStart.level !== level) {
+        showStatusToast('Les deux points du passage doivent être au même étage', 3500);
+        return;
+      }
+      survey.addPassage({ level, from: [passageStart.x, passageStart.y], to: [x, y], note: 'Passage relevé sur place' });
+      showStatusToast('Passage enregistré (pris en compte après export + import)', 4000);
+      passageStart = null;
+      surveyHelpElement.textContent = 'Passage enregistré. Touchez deux points pour un autre passage.';
     }
-    renderedCount++;
-  }
-
-  filterDestinations(query);
-
-  if (noDestinationsFoundMsg) {
-    noDestinationsFoundMsg.style.display = renderedCount === 0 ? 'block' : 'none';
-  }
-}
-
-/**
- * filterDestinations
- * ------------------
- * Filters the list of destination rooms based on user query string.
- *
- * @param {string} query – User search string.
- */
-function filterDestinations(query) {
-  if (!isGraphReady) {
-    if (noDestinationsFoundMsg) noDestinationsFoundMsg.style.display = 'none';
+    updateMapHint();
     return;
   }
 
-  const normalizedQuery = (query || '').trim().toLowerCase();
-  const items = destinationListScroll ? destinationListScroll.querySelectorAll('.destination-item') : [];
-  let visibleCount = 0;
-
-  items.forEach((item) => {
-    const textContent = (item.textContent || '').toLowerCase();
-    const isMatching = textContent.includes(normalizedQuery);
-    item.style.display = isMatching ? 'flex' : 'none';
-    if (isMatching) visibleCount++;
-  });
-
-  if (noDestinationsFoundMsg) {
-    noDestinationsFoundMsg.style.display = visibleCount === 0 ? 'block' : 'none';
-  }
-}
-
-/**
- * updatePositionChip
- * ------------------
- * Shows the current graph node above the action bar.
- */
-function updatePositionChip() {
-  const node = currentQrNodeId ? buildingGraph.getNode(currentQrNodeId) : null;
-  if (positionChipElement) positionChipElement.hidden = !node;
-  if (positionLabelElement) positionLabelElement.textContent = node ? node.name : '—';
-  if (startSelectElement) startSelectElement.value = node ? currentQrNodeId : '';
-}
-
-/**
- * renderStartOptions
- * ------------------
- * Fills the start-point picker with every graph node.
- */
-function renderStartOptions() {
-  if (!startSelectElement || !isGraphReady) return;
-
-  const placeholder = startSelectElement.querySelector('option[value=""]');
-  startSelectElement.replaceChildren();
-  if (placeholder) startSelectElement.appendChild(placeholder);
-
-  for (const node of getOrderedNodes()) {
-    const option = document.createElement('option');
-    option.value = node.id;
-    option.textContent = node.name;
-    startSelectElement.appendChild(option);
-  }
-  startSelectElement.value = currentQrNodeId || '';
-}
-
-/**
- * showRoutePanel
- * --------------
- * Reveals the floating route panel with its entry transition.
- */
-function showRoutePanel() {
-  if (!routePanelElement) return;
-  routePanelElement.hidden = false;
-  requestAnimationFrame(() => {
-    routePanelElement.classList.add('is-open');
-    if (floorView3D) floorView3D.resize();
-  });
-}
-
-/**
- * hideRoutePanel
- * --------------
- * Hides the route panel and clears the current route.
- */
-function hideRoutePanel() {
-  if (!routePanelElement) return;
-  routePanelElement.classList.remove('is-open');
-  routePanelElement.hidden = true;
-  if (floorView3D) floorView3D.resize();
-}
-
-/**
- * addRouteStep
- * ------------
- * Appends one readable leg to the route list.
- *
- * @param {number|null} index – Step number, or null for the departure row.
- * @param {string} name – Node display name.
- * @param {number|null} distance – Leg distance in metres.
- */
-function addRouteStep(index, name, distance) {
-  if (!routeStepsElement) return;
-
-  const item = document.createElement('li');
-  item.className = 'route-step';
-
-  const badge = document.createElement('span');
-  badge.className = 'route-step-index';
-  badge.textContent = index === null ? '•' : String(index);
-
-  const label = document.createElement('span');
-  label.className = 'route-step-name';
-  label.textContent = name;
-
-  item.append(badge, label);
-
-  if (distance !== null) {
-    const distanceLabel = document.createElement('span');
-    distanceLabel.className = 'route-step-distance';
-    distanceLabel.textContent = `${Math.round(distance)} m`;
-    item.appendChild(distanceLabel);
-  }
-
-  routeStepsElement.appendChild(item);
-}
-
-/**
- * updateRouteForCurrentDestination
- * --------------------------------
- * Recomputes Dijkstra from the current QR node and renders the route panel.
- * This is the only place where route distances are produced.
- */
-function updateRouteForCurrentDestination() {
-  if (!routeTitleElement || !routeSummaryElement || !routeStepsElement) return;
-
-  if (!currentDestinationId) {
-    hideRoutePanel();
+  const place = placeAt(level, x, y);
+  if (!place) {
+    surveyHelpElement.textContent = 'Aucune salle détectée ici — touchez l’intérieur d’une salle.';
     return;
   }
-
-  const destination = buildingGraph.getNode(currentDestinationId);
-  if (!destination) {
-    hideRoutePanel();
-    return;
-  }
-
-  routeTitleElement.textContent = destination.name;
-  routeStepsElement.replaceChildren();
-  currentRoutePath = [];
-  currentRouteDistance = 0;
-  if (startArButton) startArButton.disabled = true;
-
-  if (!isGraphReady) {
-    routeSummaryElement.textContent = 'Chargement du plan du bâtiment…';
-    showRoutePanel();
-    renderMap();
-    return;
-  }
-
-  if (!currentQrNodeId) {
-    routeSummaryElement.textContent = 'Scannez un QR code ou choisissez un départ pour calculer l’itinéraire.';
-    showRoutePanel();
-    renderMap();
-    return;
-  }
-
-  const path = buildingGraph.findShortestPath(currentQrNodeId, currentDestinationId);
-  if (path.length === 1) {
-    routeSummaryElement.textContent = 'Vous êtes déjà sur place.';
-    showRoutePanel();
-    renderMap();
-    return;
-  }
-  if (path.length < 2) {
-    routeSummaryElement.textContent = 'Aucun itinéraire disponible depuis cette position.';
-    showRoutePanel();
-    renderMap();
-    return;
-  }
-
-  currentRoutePath = path;
-  currentRouteDistance = buildingGraph.getPathDistance(path);
-
-  const stepCount = path.length - 1;
-  routeSummaryElement.textContent =
-    `${Math.round(currentRouteDistance)} m · ${stepCount} étape${stepCount > 1 ? 's' : ''}`;
-
-  const startNode = buildingGraph.getNode(path[0]);
-  addRouteStep(null, `Départ : ${startNode ? startNode.name : path[0]}`, null);
-
-  for (let index = 1; index < path.length; index++) {
-    const node = buildingGraph.getNode(path[index]);
-    const legDistance = buildingGraph.getPathDistance([path[index - 1], path[index]]);
-    addRouteStep(index, node ? node.name : path[index], legDistance);
-  }
-
-  if (startArButton) startArButton.disabled = false;
-  showRoutePanel();
-  renderMap();
+  surveySelection = place;
+  surveyNameInput.disabled = false;
+  surveySaveButton.disabled = false;
+  surveyNameInput.value = survey.names[place.code || place.id] || (place.official || place.surveyed ? place.name : '');
+  surveyHelpElement.textContent = `${place.code || place.id} · ${blockLabel(place.block)} · ${levelLabel(place.level)}${place.area ? ` · ${place.area} m²` : ''}`;
+  surveyNameInput.focus();
+  if (view) view.focusPlace(place);
 }
 
-/**
- * updateARControls
- * ----------------
- * Swaps the start/stop AR buttons when the session state changes.
- *
- * @param {boolean} isActive – True while immersive-ar is running.
- */
+function saveSurveyName() {
+  if (!surveySelection) return;
+  const code = surveySelection.code || surveySelection.id;
+  const name = surveyNameInput.value.trim();
+  survey.nameRoom(code, name);
+  if (name) campus.renamePlace(surveySelection.id, name);
+  showStatusToast(name ? `Salle ${code} : « ${name} » enregistrée` : `Nom de ${code} effacé`, 3500);
+  renderStartOptions();
+  renderDestinationList();
+}
+
+function updateSurveyCount() {
+  if (surveyCountElement) surveyCountElement.textContent = String(survey.count);
+}
+
+/** Applies names saved on this device (survey mode) to the campus model. */
+function applySurveyNames() {
+  for (const [code, name] of Object.entries(survey.names)) campus.renamePlace(code, name);
+}
+
+// ===========================================================================
+// Compass & GPS
+// ===========================================================================
+
+function handleHeading(heading) {
+  if (compassRoseElement) compassRoseElement.style.transform = `rotate(${-heading}deg)`;
+  if (compassButton) compassButton.classList.toggle('is-off', !compass.isReliable);
+  if (compassReadoutElement) compassReadoutElement.textContent = `${shortCardinal(heading)} ${Math.round(heading)}°`;
+  if (view) view.setHeading(heading);
+}
+
+async function startCompass(fromGesture) {
+  const ok = await compass.start();
+  if (!ok && fromGesture && compass.heading === null) {
+    showStatusToast(compass.permission === 'denied'
+      ? 'Boussole refusée : autorisez « Capteurs de mouvement » pour ce site dans Chrome'
+      : 'Boussole indisponible sur cet appareil', 4500);
+  }
+  if (fromGesture) {
+    setTimeout(() => {
+      if (compass.heading === null) showStatusToast('Boussole : aucune mesure (capteur absent ou ordinateur)', 4500);
+      else if (!compass.isReliable) showStatusToast('Boussole perturbée : faites un 8 avec le téléphone pour la calibrer', 5000);
+    }, 2500);
+  }
+}
+
+function toggleGps() {
+  if (!gps) return;
+  if (gps.isRunning) {
+    gps.stop();
+    gpsButton.setAttribute('aria-pressed', 'false');
+    if (view) view.setGps(null);
+    showStatusToast('GPS désactivé', 2500);
+    return;
+  }
+  if (!GpsTracker.isSupported()) {
+    showStatusToast('GPS non disponible sur ce navigateur', 3500);
+    return;
+  }
+  gps.start();
+  gpsButton.setAttribute('aria-pressed', 'true');
+  showStatusToast('GPS : recherche de la position… (à l’extérieur des bâtiments)', 4000);
+}
+
+function handleGpsFix(fix, error) {
+  if (error && !fix) {
+    showStatusToast(error.code === 1 ? 'Localisation refusée : autorisez-la dans Chrome' : 'Position GPS indisponible', 4500);
+    gpsButton.setAttribute('aria-pressed', 'false');
+    return;
+  }
+  if (!fix) return;
+  const near = Math.hypot(fix.x, fix.y) < 700;
+  if (view) view.setGps(near ? fix : null);
+  if (!near) {
+    showStatusToast(`GPS : vous êtes à ${Math.round(Math.hypot(fix.x, fix.y))} m de SUP’COM`, 4000);
+    return;
+  }
+  // Outdoors only: GPS is too imprecise inside the building (use QR codes)
+  if (fix.accuracy > 30) {
+    showStatusToast(`GPS imprécis (± ${Math.round(fix.accuracy)} m) : scannez un QR code à l’intérieur`, 4000);
+    return;
+  }
+  if (!currentPosition || currentPosition.source === 'gps') {
+    setCurrentPosition({ level: 0, x: fix.x, y: fix.y, name: `Position GPS (± ${Math.round(fix.accuracy)} m)`, placeId: null, source: 'gps' });
+  }
+}
+
+// ===========================================================================
+// AR guidance (WebXR immersive-ar on WebGPU)
+// ===========================================================================
+
+function setARView(isAR) {
+  mapViewElement.hidden = isAR;
+  sceneContainer.classList.toggle('is-ar-active', isAR);
+  if (view) view.setActive(!isAR);
+}
+
 function updateARControls(isActive) {
-  if (startArButton) startArButton.hidden = isActive;
-  if (stopArButton) stopArButton.hidden = !isActive;
-  // Scanner/destination bar is hidden in AR: the camera belongs to WebXR
+  startArButton.hidden = isActive;
+  stopArButton.hidden = !isActive;
   document.body.classList.toggle('is-ar-session', isActive);
   setARView(isActive);
+  if (isActive) requestWakeLock();
+  else releaseWakeLock();
 }
 
-/**
- * describeArError
- * ---------------
- * Turns a WebXR failure into a readable, specific message, so a failure on
- * a phone can be diagnosed without a debugger.
- *
- * @param {Error|DOMException} error – Failure from requestSession/setSession.
- * @returns {string} User-facing message.
- */
 function describeArError(error) {
   const name = error && error.name ? error.name : 'Error';
   const detail = error && error.message ? error.message : String(error);
-
   switch (name) {
     case 'NotAllowedError':
       return 'AR refusée : autorisez la caméra pour ce site dans Chrome, puis réessayez.';
     case 'SecurityError':
-      if (isUserActivationError(error)) {
-        return 'Le toucher n’a pas été pris en compte par Chrome : touchez à nouveau « Guidage AR ».';
-      }
+      if (isUserActivationError(error)) return 'Le toucher n’a pas été pris en compte par Chrome : touchez à nouveau « Guidage AR ».';
       return `AR bloquée par le navigateur (HTTPS requis) — ${detail}`;
     case 'NotSupportedError':
-      return `AR non supportée ici (ARCore à jour ? Chrome ?) — ${detail}`;
-    case 'InvalidStateError':
-      return `Une session AR est déjà en cours — ${detail}`;
+      return `AR WebGPU non supportée ici (Chrome + ARCore + chrome://flags/#webxr-webgpu-binding) — ${detail}`;
     default:
       return `Erreur AR (${name}) — ${detail}`;
+  }
+}
+
+function arUnavailableMessage() {
+  switch (arStatus.reason) {
+    case 'webgpu-binding':
+      return 'AR WebGPU : activez chrome://flags/#webxr-webgpu-binding dans Chrome Android, puis relancez Chrome. Itinéraire affiché en 3D.';
+    case 'webgpu':
+      return 'WebGPU indisponible sur ce téléphone : AR impossible. Itinéraire affiché en 3D.';
+    case 'immersive-ar':
+      return 'AR non disponible (Chrome Android + Google Play Services for AR requis). Itinéraire affiché en 3D.';
+    case 'webxr':
+      return 'WebXR non disponible sur ce navigateur. Itinéraire affiché en 3D.';
+    default:
+      return 'Vérification de l’AR en cours…';
   }
 }
 
 /**
  * startARGuide
  * ------------
- * Starts the immersive-ar arrow for the current route, or stops it.
- * Nothing is awaited before `arGuide.start()`: Chrome only accepts the
- * session request while the tap is fresh, so the startup support check
- * (isArSupported) is used instead of checking again here.
+ * Nothing is awaited before arGuide.start(): Chrome only accepts the session
+ * request while the tap is fresh.
  */
 async function startARGuide() {
-  if (arGuide && arGuide.isActive) {
-    arGuide.stop();
+  if (arGuide && arGuide.isActive) { arGuide.stop(); return; }
+  if (arGuide && arGuide.isStarting) return;
+  if (!currentRoute || !currentRoute.found || !currentPosition) {
+    showStatusToast('Choisissez un départ et une destination', 3500);
     return;
   }
-  if (arGuide && arGuide.isStarting) return; // ignore double taps
-  if (!currentRoutePath || currentRoutePath.length < 2) {
-    showStatusToast('Scannez un QR code et choisissez une destination', 4000);
-    return;
-  }
-
-  if (!arGuide || !isArSupported) {
-    // No immersive-ar here: show the same route on the 3D floor model.
-    if (setMapViewMode('3d')) {
-      showStatusToast('AR non disponible sur cet appareil — itinéraire affiché en 3D', 5000);
-    }
+  if (!arGuide || !arStatus.supported) {
+    view && view.setViewMode('3d');
+    showStatusToast(arUnavailableMessage(), 8000);
     return;
   }
 
-  const isMinimal = arGuide.sessionMode === 'minimal';
-  const startPromise = arGuide.start(currentRoutePath);
-  showStatusToast(isMinimal
-    ? 'AR (mode simplifié) : l’interface est masquée pendant l’AR — touchez le sol pour la flèche, bouton Retour pour quitter.'
-    : 'Démarrage de la session AR…', isMinimal ? 8000 : 3000);
+  const minimal = arGuide.sessionMode === 'minimal';
+  const startPromise = arGuide.start(currentRoute, { level: currentPosition.level, x: currentPosition.x, y: currentPosition.y });
+  showStatusToast(minimal
+    ? 'AR (mode simplifié) : interface masquée pendant l’AR — touchez le sol pour la flèche, bouton Retour pour quitter.'
+    : 'Démarrage de la session AR… tenez-vous à l’endroit du QR scanné.', minimal ? 8000 : 4000);
   setARView(true);
 
   try {
@@ -1621,420 +869,273 @@ async function startARGuide() {
   } catch (error) {
     console.error('[main] AR session failed:', error);
     updateARControls(false);
-
     if (error && error.retryNextTap) {
-      const cause = `${error.name || 'Error'}: ${error.message || error}`;
-      showStatusToast(`AR : configuration simplifiée prête — touchez à nouveau « Guidage AR ». (cause : ${cause})`, 15000);
+      showStatusToast(`AR : configuration simplifiée prête — touchez à nouveau « Guidage AR ». (cause : ${error.name}: ${error.message})`, 15000);
       return;
     }
-    if (isUserActivationError(error)) {
-      showStatusToast(describeArError(error), 10000);
-      return;
-    }
-
-    setMapViewMode('3d');
     showStatusToast(describeArError(error), 15000);
   }
 }
 
-/**
- * selectDestination
- * -----------------
- * Handles destination item selection, updates application state, provides
- * toast feedback, and dismisses the bottom sheet.
- *
- * @param {string} destinationId – Unique room ID.
- * @param {string} destinationName – Human-readable room title.
- */
-function selectDestination(destinationId, destinationName) {
-  currentDestinationId = destinationId;
-
-  if (destinationListScroll) {
-    destinationListScroll.querySelectorAll('.destination-item').forEach((item) => {
-      const isSelected = item.getAttribute('data-destination-id') === destinationId;
-      item.setAttribute('aria-pressed', String(isSelected));
-    });
-  }
-
-  showStatusToast(`Destination : ${destinationName}`, 4000);
-  closeDestinationSheet();
-  updateRouteForCurrentDestination();
-  // Showcase the chosen destination on the 3D floor model
-  setMapViewMode('3d');
+function updateArBadge() {
+  if (!arSupportBadgeElement) return;
+  const text = arStatus.supported ? 'AR : WebGPU prête'
+    : arStatus.reason === 'webgpu-binding' ? 'AR : flag WebGPU-XR'
+    : arStatus.reason === 'loading' ? 'AR : vérification…'
+    : 'AR : non disponible';
+  arSupportBadgeElement.textContent = text;
+  arSupportBadgeElement.classList.toggle('is-ready', arStatus.supported);
+  if (startArLabelElement) startArLabelElement.textContent = arStatus.supported ? 'Guidage AR' : 'Voir en 3D';
 }
 
-/**
- * setupTouchDismissSheet
- * ----------------------
- * Implements mobile downward swipe-to-dismiss gesture on the bottom sheet.
- *
- * @param {HTMLElement} sheetElement – Bottom sheet element.
- * @param {HTMLElement} handleBarElement – Drag handle trigger area.
- */
-function setupTouchDismissSheet(sheetElement, handleBarElement) {
-  if (!sheetElement || !handleBarElement) return;
-
-  let touchStartY = 0;
-  let currentTouchY = 0;
-
-  /** Resets the drag transform and cached touch positions. */
-  function resetDragState() {
-    sheetElement.style.transform = '';
-    touchStartY = 0;
-    currentTouchY = 0;
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator && !wakeLock) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (error) {
+    wakeLock = null;
   }
+}
 
-  handleBarElement.addEventListener('touchstart', (event) => {
-    touchStartY = event.touches[0].clientY;
-    currentTouchY = touchStartY;
-  }, { passive: true });
+function releaseWakeLock() {
+  if (wakeLock) wakeLock.release().catch(() => {});
+  wakeLock = null;
+}
 
-  handleBarElement.addEventListener('touchmove', (event) => {
-    currentTouchY = event.touches[0].clientY;
-    const deltaY = currentTouchY - touchStartY;
-    sheetElement.style.transform = deltaY > 0
-      ? `translateY(${Math.min(deltaY, 200)}px)`
-      : '';
-  }, { passive: true });
+// ===========================================================================
+// Events
+// ===========================================================================
 
-  handleBarElement.addEventListener('touchend', () => {
-    const shouldDismiss = currentTouchY - touchStartY > 60;
-    resetDragState();
-    // If pulled down further than 60px, dismiss
-    if (shouldDismiss) {
-      closeDestinationSheet();
+function initUIEventListeners() {
+  scanTriggerButton.addEventListener('click', openScanOverlay);
+  closeScanButton.addEventListener('click', closeScanOverlay);
+  destinationTriggerButton.addEventListener('click', openDestinationSheet);
+  closeDestinationButton.addEventListener('click', closeDestinationSheet);
+  sheetBackdropElement.addEventListener('click', closeDestinationSheet);
+  setupTouchDismissSheet(destinationSheetElement, sheetDragHandleBar);
+  destinationSearchInput.addEventListener('input', (event) => filterDestinations(event.target.value));
+
+  const pick = (event) => {
+    const item = event.target.closest('.destination-item');
+    if (item) selectDestination(item.dataset.destinationId);
+  };
+  destinationListScroll.addEventListener('click', pick);
+  destinationListScroll.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pick(event); }
+  });
+
+  startSelectElement.addEventListener('change', () => {
+    const id = startSelectElement.value;
+    if (id && setCurrentPlace(id, 'manual')) {
+      const place = campus.getPlace(id);
+      showStatusToast(`Départ : ${place.name} (${levelShort(place.level)})`, 3000);
     }
   });
 
-  handleBarElement.addEventListener('touchcancel', resetDragState);
-}
+  qrFileInput.addEventListener('change', async () => {
+    const [file] = qrFileInput.files || [];
+    if (!file) return;
+    showStatusToast('Lecture du QR code…', 2500);
+    try {
+      const value = await qrScanner.scanImage(file);
+      if (value) handleQrDetection(value);
+      else showStatusToast('Aucun QR code lisible dans cette image', 4000);
+    } catch (error) {
+      console.error('[main] QR image decode failed:', error);
+      showStatusToast('Impossible de lire cette image', 4000);
+    } finally {
+      qrFileInput.value = '';
+    }
+  });
 
-// ---------------------------------------------------------------------------
-// Network Status Monitoring
-// ---------------------------------------------------------------------------
+  rescanButton.addEventListener('click', openScanOverlay);
+  rescanRouteButton.addEventListener('click', openScanOverlay);
+  closeRouteButton.addEventListener('click', () => { hideRoutePanel(); destinationTriggerButton.focus(); });
+  startArButton.addEventListener('click', startARGuide);
+  stopArButton.addEventListener('click', () => arGuide && arGuide.stop());
+  avoidStairsInput.addEventListener('change', () => {
+    router.setStrategy(avoidStairsInput.checked ? new AvoidStairsStrategy() : new ShortestPathStrategy());
+    distanceCacheKey = '';
+    scheduleDistanceUpdate();
+    updateRoute();
+    showStatusToast(router.strategy.label, 2500);
+  });
 
-/**
- * updateNetworkStatus
- * -------------------
- * Checks navigator.onLine and updates the compact header status indicator.
- */
-function updateNetworkStatus() {
-  if (!networkStatusBadge || !networkStatusLabel) return;
+  floorTabsElement.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-floor]');
+    if (!button || !view) return;
+    view.setFloor(button.dataset.floor === 'all' ? 'all' : Number(button.dataset.floor));
+    updateFloorTabs();
+  });
+  view3dButton.addEventListener('click', () => {
+    if (!view) return;
+    view.setViewMode('3d');
+    view3dButton.setAttribute('aria-pressed', 'true');
+    viewTopButton.setAttribute('aria-pressed', 'false');
+  });
+  viewTopButton.addEventListener('click', () => {
+    if (!view) return;
+    view.setViewMode('top');
+    view3dButton.setAttribute('aria-pressed', 'false');
+    viewTopButton.setAttribute('aria-pressed', 'true');
+  });
+  gpsButton.addEventListener('click', toggleGps);
+  compassButton.addEventListener('click', () => startCompass(true));
 
-  const isOnline = navigator.onLine;
-  if (isOnline) {
-    networkStatusBadge.classList.remove('is-offline');
-    networkStatusLabel.textContent = 'En ligne';
-  } else {
-    networkStatusBadge.classList.add('is-offline');
-    networkStatusLabel.textContent = 'Hors ligne';
-    showStatusToast('Mode hors ligne actif', 3500);
-  }
-}
+  surveyButton.addEventListener('click', () => setSurveyMode(!surveyMode));
+  surveySaveButton.addEventListener('click', saveSurveyName);
+  surveyNameInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') saveSurveyName(); });
+  surveyPassageButton.addEventListener('click', () => {
+    const on = surveyPassageButton.getAttribute('aria-pressed') !== 'true';
+    surveyPassageButton.setAttribute('aria-pressed', String(on));
+    passageStart = null;
+    surveyHelpElement.textContent = on
+      ? 'Passage manquant : touchez un côté de la porte absente du plan, puis l’autre côté.'
+      : 'Touchez une salle sur le plan pour lui donner le nom affiché sur sa porte.';
+    updateMapHint();
+  });
+  surveyUndoButton.addEventListener('click', () => {
+    const undone = survey.undo();
+    if (undone) {
+      campus.resetSurveyNames();
+      applySurveyNames();
+      renderStartOptions();
+      renderDestinationList();
+    }
+    showStatusToast(undone ? 'Dernière saisie annulée' : 'Rien à annuler', 2500);
+  });
+  surveyExportButton.addEventListener('click', () => {
+    if (!survey.count) { showStatusToast('Aucune saisie à exporter', 2500); return; }
+    survey.download();
+    showStatusToast('corrections.json exporté : à fusionner dans assets/campus/', 4500);
+  });
+  survey.subscribe(updateSurveyCount);
 
-// ---------------------------------------------------------------------------
-// UI Event Listeners Registration
-// ---------------------------------------------------------------------------
-
-/**
- * initUIEventListeners
- * ---------------------
- * Binds all interactive click, key, touch, and search listeners cleanly.
- */
-function initUIEventListeners() {
-  // 1. Scan overlay triggers
-  if (scanTriggerButton) {
-    scanTriggerButton.addEventListener('click', openScanOverlay);
-  }
-  if (closeScanButton) {
-    closeScanButton.addEventListener('click', closeScanOverlay);
-  }
-
-  // 2. Destination bottom sheet triggers
-  if (destinationTriggerButton) {
-    destinationTriggerButton.addEventListener('click', openDestinationSheet);
-  }
-  if (closeDestinationButton) {
-    closeDestinationButton.addEventListener('click', closeDestinationSheet);
-  }
-  if (sheetBackdropElement) {
-    sheetBackdropElement.addEventListener('click', closeDestinationSheet);
-  }
-
-  // 3. Mobile swipe down gesture to dismiss sheet
-  setupTouchDismissSheet(destinationSheetElement, sheetDragHandleBar);
-
-  // 4. Destination search input
-  if (destinationSearchInput) {
-    destinationSearchInput.addEventListener('input', (event) => {
-      filterDestinations(event.target.value);
-    });
-  }
-
-  // 5a. Manual start point (same effect as scanning that node's QR code)
-  if (startSelectElement) {
-    startSelectElement.addEventListener('change', () => {
-      const nodeId = startSelectElement.value;
-      if (!nodeId || !setCurrentNode(nodeId)) return;
-      const node = buildingGraph.getNode(nodeId);
-      showStatusToast(`Départ : ${node.name}`, 3000);
-    });
-  }
-
-  // 5b. Destination items selection
-  if (destinationListScroll) {
-    destinationListScroll.addEventListener('click', (event) => {
-      const item = event.target.closest('.destination-item');
-      if (item) {
-        const destId = item.getAttribute('data-destination-id');
-        const destName = item.getAttribute('data-destination-name');
-        selectDestination(destId, destName);
-      }
-    });
-
-    destinationListScroll.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        const item = event.target.closest('.destination-item');
-        if (item) {
-          event.preventDefault();
-          const destId = item.getAttribute('data-destination-id');
-          const destName = item.getAttribute('data-destination-name');
-          selectDestination(destId, destName);
-        }
-      }
-    });
-  }
-
-  // 6. Floor-plan demo interaction
-  if (mapSvgElement) {
-    mapSvgElement.addEventListener('click', (event) => {
-      const node = event.target.closest('[data-node-id]');
-      if (node) simulatePosition(node.getAttribute('data-node-id'));
-    });
-
-    mapSvgElement.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      const node = event.target.closest('[data-node-id]');
-      if (!node) return;
-      event.preventDefault();
-      simulatePosition(node.getAttribute('data-node-id'));
-    });
-  }
-
-  // 7. QR image fallback for desktops without a camera
-  if (qrFileInput) {
-    qrFileInput.addEventListener('change', async () => {
-      const [file] = qrFileInput.files || [];
-      if (!file) return;
-
-      showStatusToast('Lecture du QR code…', 2500);
-      try {
-        const value = await qrScanner.scanImage(file);
-        if (value) {
-          handleQrDetection(value);
-        } else {
-          showStatusToast('Aucun QR code lisible dans cette image', 4000);
-        }
-      } catch (error) {
-        console.error('[main] QR image decode failed:', error);
-        showStatusToast('Impossible de lire cette image', 4000);
-      } finally {
-        qrFileInput.value = '';
-      }
-    });
-  }
-
-  // 8. 2D / 3D floor-plan toggle
-  if (view2dButton) view2dButton.addEventListener('click', () => setMapViewMode('2d'));
-  if (view3dButton) view3dButton.addEventListener('click', () => setMapViewMode('3d'));
-
-  // 9. Route panel and current-position actions
-  if (rescanButton) rescanButton.addEventListener('click', openScanOverlay);
-  if (rescanRouteButton) rescanRouteButton.addEventListener('click', openScanOverlay);
-  if (closeRouteButton) {
-    closeRouteButton.addEventListener('click', () => {
-      hideRoutePanel();
-      if (destinationTriggerButton) destinationTriggerButton.focus();
-    });
-  }
-  if (startArButton) startArButton.addEventListener('click', startARGuide);
-  if (stopArButton) stopArButton.addEventListener('click', () => arGuide?.stop());
-
-  // 10. Global keyboard accessibility: Escape closes, Tab stays inside the dialog
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
-        closeScanOverlay();
-      } else if (destinationSheetElement && destinationSheetElement.classList.contains('is-open')) {
-        closeDestinationSheet();
-      } else if (routePanelElement && routePanelElement.classList.contains('is-open')) {
-        hideRoutePanel();
-      }
+      if (scanOverlayElement.classList.contains('is-open')) closeScanOverlay();
+      else if (destinationSheetElement.classList.contains('is-open')) closeDestinationSheet();
+      else if (routePanelElement.classList.contains('is-open')) hideRoutePanel();
     } else if (event.key === 'Tab') {
-      if (scanOverlayElement && scanOverlayElement.classList.contains('is-open')) {
-        trapFocus(event, scanOverlayElement);
-      } else if (destinationSheetElement && destinationSheetElement.classList.contains('is-open')) {
-        trapFocus(event, destinationSheetElement);
-      }
+      if (scanOverlayElement.classList.contains('is-open')) trapFocus(event, scanOverlayElement);
+      else if (destinationSheetElement.classList.contains('is-open')) trapFocus(event, destinationSheetElement);
     }
   });
 
-  // 11. Online/Offline events
   window.addEventListener('online', updateNetworkStatus);
   window.addEventListener('offline', updateNetworkStatus);
   updateNetworkStatus();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && arGuide && arGuide.isActive) requestWakeLock();
+  });
 }
 
-// ---------------------------------------------------------------------------
-// PWA: Service Worker Registration
-// ---------------------------------------------------------------------------
+function updateNetworkStatus() {
+  if (!networkStatusBadge || !networkStatusLabel) return;
+  const online = navigator.onLine;
+  networkStatusBadge.classList.toggle('is-offline', !online);
+  networkStatusLabel.textContent = online ? 'En ligne' : 'Hors ligne';
+  if (!online) showStatusToast('Mode hors ligne actif', 3500);
+}
 
-/**
- * registerServiceWorker
- * ---------------------
- * Registers the offline app-shell worker after the page has loaded.
- */
+// ===========================================================================
+// PWA
+// ===========================================================================
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-
-  let isRefreshing = false;
-
-  // After a new worker claims the page, reload once so HTML and cached
-  // modules always come from the same deployment.
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let refreshing = false;
+  // Reload once when a NEW worker takes over an already-controlled page, so
+  // the HTML and the cached modules come from the same deployment.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (isRefreshing) return;
-    isRefreshing = true;
+    if (!hadController || refreshing) return;
+    refreshing = true;
     window.location.reload();
   });
-
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
       .then((registration) => registration.update().catch(() => {}))
-      .catch((error) => {
-        console.warn('[Indoor Wayfinder] Service worker registration failed:', error);
-      });
+      .catch((error) => console.warn('[Indoor Wayfinder] Service worker registration failed:', error));
   });
 }
 
-// ---------------------------------------------------------------------------
+// ===========================================================================
 // Bootstrap
-// ---------------------------------------------------------------------------
+// ===========================================================================
 
-/**
- * init
- * ----
- * Application entrypoint. Instantiates the Three.js 3D scene with a rotating
- * cube, registers resize listeners, starts the render loop, and initializes
- * UI handlers.
- */
-function init() {
-  // 1. Connect QR detector and load building graph
-  qrScanner.onDetect((code) => handleQrDetection(code));
-  buildingGraph.loadGraph('assets/building.json')
-    .then(() => {
-      isGraphReady = true;
-      renderStartOptions();
-      if (floorView3D) {
-        floorView3D.setGraph(buildingGraph.getAllNodes(), buildingGraph.getEdges());
-      }
-      renderDestinationList();
-      updatePositionChip();
-      renderMap();
-      if (currentDestinationId) updateRouteForCurrentDestination();
-      console.log('[Indoor Wayfinder] Plan du bâtiment chargé');
-    })
-    .catch((err) => {
-      console.warn('[Indoor Wayfinder] Erreur chargement plan :', err);
-      if (destinationsLoadingElement) {
-        destinationsLoadingElement.style.display = 'block';
-        destinationsLoadingElement.textContent = 'Plan du bâtiment indisponible.';
-      }
-      if (mapHintElement) mapHintElement.textContent = 'Plan du bâtiment indisponible.';
-      if (arSupportBadgeElement) arSupportBadgeElement.textContent = 'AR : indisponible';
-    });
-
-  // 2. Bind UI first so the shell remains usable if WebGL is unavailable
+async function init() {
   initUIEventListeners();
+  qrScanner.onDetect((code) => handleQrDetection(code));
+  compass.subscribe(handleHeading);
+  // Start the compass now (Android needs no permission) and again on the
+  // first tap, which is the user gesture iOS / recent Chrome require.
+  startCompass(false).catch(() => {});
+  const startCompassOnTap = (event) => {
+    if (compass.permission === 'granted' || compass.heading !== null) {
+      document.removeEventListener('pointerdown', startCompassOnTap, true);
+      return;
+    }
+    // Never on the AR button: that tap's activation belongs to requestSession()
+    if (event.target.closest && event.target.closest('#btn-start-ar')) return;
+    startCompass(false).catch(() => {});
+  };
+  document.addEventListener('pointerdown', startCompassOnTap, true);
 
   try {
-    // 2. Build core Three.js components
-    const scene = createScene();
-    const camera = createCamera();
-    const renderer = createRenderer(sceneContainer);
-
-    // 3. Populate 3D scene elements
-    const cubeGroup = createCube();
-    cubeGroup.visible = false;
-    scene.add(cubeGroup);
-
-    const groundShadowMesh = createGroundShadow();
-    groundShadowMesh.visible = false;
-    scene.add(groundShadowMesh);
-
-    createLighting(scene);
-    const gridHelper = createGridHelper(scene);
-    gridHelper.visible = false;
-
-    // 4. Prepare the immersive-ar controller (session starts on demand)
-    arGuide = new ARGuide({
-      renderer,
-      scene,
-      camera,
-      arrowFactory: createArrow,
-      demoObjects: [cubeGroup, groundShadowMesh, gridHelper],
-      getDirection: (fromId, toId) => buildingGraph.getDirectionVector(fromId, toId),
-      onStatus: (message) => showStatusToast(message, 5000),
-      onSessionState: updateARControls,
-      overlayRoot: uiOverlayElement,
-      getNodeName: (nodeId) => buildingGraph.getNode(nodeId)?.name || nodeId
-    });
-
-    // 5. React to viewport resizing & orientation changes
-    window.addEventListener('resize', () => {
-      handleWindowResize(camera, renderer);
-    });
-    window.addEventListener('orientationchange', () => {
-      setTimeout(() => handleWindowResize(camera, renderer), 100);
-    });
-    window.visualViewport?.addEventListener('resize', () => {
-      handleWindowResize(camera, renderer);
-    });
-
-    renderer.domElement.addEventListener('webglcontextlost', (event) => {
-      event.preventDefault();
-      renderer.setAnimationLoop(null);
-      showRenderFallback('Le contexte 3D a été perdu. Rechargez la page pour réessayer.');
-    });
-
-    // 6. Start 3D animation loop
-    startAnimationLoop(renderer, scene, camera, cubeGroup, groundShadowMesh);
-
-    // 7. Display initial discrete status toast
-    showStatusToast('Plan intérieur prêt ✓', 4000);
-
-    arGuide.isSupported().then((supported) => {
-      isArSupported = supported;
-      updateStartArLabel();
-      if (!arSupportBadgeElement) return;
-      arSupportBadgeElement.textContent = supported
-        ? 'AR : disponible'
-        : 'AR : non disponible';
-      arSupportBadgeElement.classList.toggle('is-ready', supported);
-    });
-
-    console.log('[Indoor Wayfinder] v2.3.2 – Scene & UI initialized. Three.js r' + THREE.REVISION);
+    campus = await CampusMap.load(CAMPUS_URL);
   } catch (error) {
-    console.error('[Indoor Wayfinder] 3D initialization failed:', error);
-    showRenderFallback('La scène 3D et le guidage AR sont désactivés sur ce navigateur.');
-    showStatusToast('Mode dégradé : rendu 3D indisponible', 5000);
-    updateStartArLabel();
-    if (arSupportBadgeElement) {
-      arSupportBadgeElement.textContent = 'AR : indisponible';
-      arSupportBadgeElement.classList.remove('is-ready');
+    console.error('[Indoor Wayfinder] Campus load failed:', error);
+    if (mapHintElement) mapHintElement.textContent = 'Plan de SUP’COM indisponible.';
+    showRenderFallback('Le plan de SUP’COM n’a pas pu être chargé. Vérifiez votre connexion, puis réinitialisez.');
+    return;
+  }
+  applySurveyNames();
+  router = new CampusRouter(campus);
+  gps = new GpsTracker(campus);
+  gps.subscribe(handleGpsFix);
+  renderStartOptions();
+  renderDestinationList();
+  updateMapHint();
+
+  // WebGPU campus view
+  if (await hasWebGPU()) {
+    view = new CampusView3D({ container: map3dElement, campus, onPick: handleMapPick, getBottomOcclusion: getRoutePanelOcclusion });
+    const ok = await view.init().catch((error) => { console.error('[view3d] init failed:', error); return false; });
+    if (ok) {
+      view.setActive(true);
+      updateFloorTabs();
+    } else {
+      view = null;
     }
   }
+  if (!view) {
+    mapUnsupportedElement.hidden = false;
+    showStatusToast('WebGPU indisponible : vue 3D désactivée', 5000);
+  } else {
+    showStatusToast(`Plan de SUP’COM chargé : ${campus.getPlaces().length} lieux sur ${campus.levels.length} niveaux`, 4500);
+  }
+
+  // AR on WebGPU (prepared ahead so the tap only requests the session)
+  arGuide = new ARGuide({
+    container: sceneContainer,
+    overlayRoot: uiOverlayElement,
+    compass,
+    onStatus: (message) => showStatusToast(message, 6000),
+    onSessionState: updateARControls
+  });
+  arStatus = await arGuide.prepare().catch(() => ({ supported: false, reason: 'webgpu' }));
+  updateArBadge();
+
+  // Deep link: ?depart=ID&destination=ID (e.g. from a printed QR poster)
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('depart')) setCurrentPlace(params.get('depart'), 'qr');
+  if (params.get('destination')) selectDestination(params.get('destination'));
+
+  console.log(`[Indoor Wayfinder] v${APP_VERSION} – SUP'COM campus, ${campus.getPlaces().length} places, renderer WebGPU: ${Boolean(view)}`);
 }
 
-// Boot application
-init();
+init().catch((error) => {
+  console.error('[Indoor Wayfinder] init failed:', error);
+  showRenderFallback('Une erreur a interrompu le démarrage. Réinitialisez l’application.');
+});
 registerServiceWorker();

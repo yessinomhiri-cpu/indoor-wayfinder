@@ -1,240 +1,189 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 2.3.0 — Sprint 4
+**Version :** 3.0.0 — campus SUP'COM, WebGPU
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
 ## 1. Objet
 
-Indoor Wayfinder est une PWA de navigation intérieure en réalité augmentée.
-L'utilisateur scanne un QR code, choisit une destination, obtient un itinéraire
-calculé par Dijkstra, puis suit une flèche 3D ancrée au sol via WebXR.
-
-Aucun serveur applicatif : GitHub Pages sert les fichiers statiques, Three.js
-et jsQR sont chargés depuis jsDelivr avec des versions figées.
+PWA de navigation intérieure pour le bâtiment de SUP'COM (Cité Technologique
+des Communications, El Ghazala, Ariana) : 3 blocs (A, B, C), hall central,
+4 niveaux (RDC, étages 1 à 3). Localisation par QR codes (GPS à l'extérieur),
+itinéraire multi-étages par Dijkstra, vue 3D WebGPU et guidage en réalité
+augmentée WebXR orienté par la boussole.
 
 ## 2. Pile technique
 
-| Couche | Technologie | Rôle |
-|---|---|---|
-| Interface | HTML/CSS/ES modules | Shell mobile, panneaux, accessibilité |
-| 3D | Three.js 0.160.0 (r160) | Scène, renderer, flèche, intégration XR |
-| AR | WebXR `immersive-ar` | Session, hit test, `XRAnchor` |
-| Caméra | `getUserMedia` | Flux arrière pour les QR |
-| QR | `BarcodeDetector` + jsQR 1.4.0 | Décodage natif ou secours |
-| Graphe | `assets/building.json` | Nœuds, arêtes, distances |
-| Routage | Dijkstra | Plus court chemin |
-| Hors ligne | Service Worker | Cache du shell, des modules et du plan |
-| Hébergement | GitHub Pages | HTTPS obligatoire |
+| Élément | Choix |
+|---|---|
+| Rendu 3D | Three.js **r187**, build `three.webgpu.js`, `WebGPURenderer` sur le backend **WebGPU** uniquement |
+| AR | WebXR `immersive-ar` + `hit-test` + `anchors` + `dom-overlay`, fonctionnalité de session **`webgpu`** (`XRGPUBinding`) |
+| Localisation | QR (`getUserMedia` + `BarcodeDetector` / jsQR 1.4.0), GPS extérieur (Geolocation) |
+| Orientation | DeviceOrientation absolu (`deviceorientationabsolute`) |
+| Données | `assets/campus/supcom.json` généré par `scripts/build-campus.mjs` |
+| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.0.0` |
+| Hébergement | HTTPS (Vercel ; GitHub Pages possible) |
+
+Aucune ligne du code de l'application ne crée de contexte WebGL : `src/gpu.js`
+ne construit un `WebGPURenderer` que si `navigator.gpu.requestAdapter()`
+renvoie un adaptateur, et rejette le renderer si Three.js n'est pas sur le
+backend WebGPU.
 
 ## 3. Arborescence
 
-```text
-index.html              UI, import map Three.js + jsQR
-manifest.json           métadonnées PWA
-sw.js                   cache hors ligne
-src/main.js             contrôleur, UI, routage, intégration AR
-src/scanner.js          caméra + décodage QR
-src/navigation.js       graphe + Dijkstra + stratégies
-src/ar.js               session immersive-ar + hit test + flèche
-assets/building.json    plan du bâtiment
-assets/icons/           icônes PWA
-docs/                   documentation, planche QR, captures
-scripts/                tests Node du graphe
-ATTRIBUTION.md          ressources et outils IA
+```
+indoor-wayfinder/
+├── index.html               UI, import map (three@0.187.0 webgpu), styles
+├── manifest.json            PWA
+├── sw.js                    cache hors ligne
+├── src/
+│   ├── main.js              NavigationService : contrôleur, état, UI
+│   ├── navigation.js        CampusMap, CampusRouter (Dijkstra), stratégies, étapes
+│   ├── view3d.js            CampusView3D : campus 3D WebGPU
+│   ├── ar.js                ARGuide : immersive-ar sur WebGPU, flèche, chevrons
+│   ├── gpu.js               détection WebGPU, fabrique WebGPURenderer
+│   ├── geo.js               Compass, GpsTracker
+│   ├── survey.js            SurveyStore (mode relevé)
+│   └── scanner.js           QR caméra / image
+├── assets/campus/
+│   ├── supcom.json          plan du campus généré (≈ 1,2 Mo)
+│   └── corrections.json     passages et noms relevés sur place
+├── scripts/
+│   ├── build-campus.mjs     import ArcGIS SUP'COM + OpenStreetMap
+│   └── test-navigation.mjs  tests Node
+└── docs/                    documentation, QR codes
 ```
 
-## 4. Graphe du bâtiment
+## 4. Données du campus
 
-Le plan est un graphe pondéré non orienté, stocké en JSON :
+### 4.1 Sources
 
-```json
-{
-  "building": { "name": "SUP'COM – Bâtiment A", "floor": "Rez-de-chaussée" },
-  "nodes": {
-    "ENTREE": { "name": "Entrée principale", "x": 0, "y": 0 },
-    "SALLE_B12": { "name": "Salle B12", "x": 20, "y": -6 }
-  },
-  "edges": [
-    { "from": "ENTREE", "to": "HALL", "weight": 10 }
-  ]
-}
-```
+- **Plans SUP'COM** : couche publique ArcGIS Online « SUPCOM Basemap »
+  (propriétaire `SUPCOM_TUN`) — c'est la source cartographique de l'ancien site
+  https://supnav.supcom.tn. Ce site affiche aujourd'hui « Error importing
+  Data » car son service de salles/personnes
+  (`supws/SupcomServices.svc/getPlacesPersons`) répond HTTP 400 ; les plans,
+  eux, restent publiés.
+  Couches : `plan_etage0…3` (polylignes) et `point_labels` (18 étiquettes).
+  Types de traits : 1 murs, 2 portes, 3 escaliers, 4 ascenseurs, 5 façade,
+  6 poteaux.
+- **OpenStreetMap** (ODbL) : bâtiments, parkings et voies voisins.
 
-Règles :
-
-- `x`, `y` sont exprimés en mètres dans le repère du bâtiment.
-- `weight` est la distance de marche en mètres.
-- Chaque arête est stockée dans les deux sens par `BuildingGraph`.
-- Les identifiants de nœuds sont les payloads des QR codes.
-- Le graphe v1 couvre un seul étage.
-
-Test de cohérence :
+### 4.2 Import
 
 ```bash
-node --test scripts/test-navigation.mjs
+node scripts/build-campus.mjs
 ```
 
-Les tests vérifient les nœuds, les arêtes, les poids, l'accessibilité depuis
-l'entrée et les itinéraires de référence.
+1. Conversion WGS84 → mètres locaux (origine : « Entrée principale »,
+   x = est, y = nord).
+2. Grille 25 cm commune aux 4 niveaux. Murs, façade et poteaux rasterisés ;
+   chaque symbole de porte (regroupement des traits voisins) ouvre la baie ;
+   aux étages, l'emprise du bâtiment est la fermeture des murs extérieurs.
+3. Cellules classées par distance au mur (1 à 4) pour tenir les trajets au
+   milieu des couloirs ; cellules extérieures du RDC marquées.
+4. Salles = régions fermées par murs **et** portes, 4–900 m², 1 à 4 portes ;
+   code stable `<bloc><niveau>-<n°>` (ex. `A1-07`), numérotation dans le sens
+   horaire autour du centre du bloc.
+5. Étiquettes SUP'COM : amphithéâtres, accueil, bureau d'ordre, buvette,
+   entrée → nom officiel ; escaliers / ascenseurs → connecteurs avec leurs
+   niveaux.
+6. `corrections.json` : passages relevés (carvés dans la grille) et noms de
+   salles.
 
-### 4.1 Vue plan interactif
+Résultat actuel : 233 salles (99 / 46 / 42 / 46 par niveau), 8 lieux
+officiels, 7 connecteurs, 34 bâtiments voisins.
 
-`src/main.js` lit `getAllNodes()` / `getEdges()` et dessine le graphe en SVG.
-Le chemin Dijkstra est surligné en cyan. Un clic sur un nœud appelle
-`setCurrentNode()` : c'est un mode démonstration explicite, équivalent à un
-scan QR, pour permettre une démonstration sur ordinateur sans caméra.
+**Limite connue :** les anneaux extérieurs des blocs A et B au RDC (25 locaux
+dont la buvette) n'ont aucune porte vers le reste du plan CAD. L'itinéraire
+s'arrête au point relié le plus proche avec « Accès à confirmer ». À corriger
+par un passage relevé.
 
-### 4.2 Vue 3D de l'itinéraire
+## 5. Routage
 
-`src/view3d.js` (`FloorView3D`) construit une maquette Three.js de l'étage à
-partir du même graphe : `x` du graphe → `x` monde, `y` du graphe → `-z` monde
-(le haut du plan 2D est au fond de la scène). Chaque arête devient un couloir,
-les salles sont des blocs translucides, les étiquettes sont des sprites.
+`CampusRouter.findRoute(from, to)` — `from` / `to` : id de lieu, code de salle,
+alias QR ou point `{ level, x, y }` (toucher sur le plan, GPS).
 
-`setState({ currentId, destinationId, path })` dessine le chemin Dijkstra
-(tube cyan + chevrons animés vers la destination), une balise sur la
-destination et un marqueur « Vous êtes ici », puis cadre la caméra sur le
-trajet au-dessus du panneau d'itinéraire (`setViewOffset`). Contrôles :
-glisser = rotation, pincer / molette = zoom, toucher une salle = scan simulé.
+- Graphe : nœuds = cellules praticables des 4 niveaux, 8 voisins, coût =
+  longueur × pénalité de proximité au mur ; arêtes verticales aux connecteurs.
+- **Dijkstra** avec tas binaire ; heuristique euclidienne admissible (A*)
+  activable (`useHeuristic`).
+- **Stratégies** : `ShortestPathStrategy` (escalier 7 m / niveau, ascenseur
+  15 m + 3 m / niveau) et `AvoidStairsStrategy` (ascenseurs seulement).
+- Lissage par visibilité, découpage par niveau, consignes : « Marchez 22 m
+  vers le Sud-Ouest », « Prenez l'escalier (Bloc A) jusqu'à l'étage 3 ».
+- `distancesFrom(from)` : une seule passe vers tous les lieux (≈ 0,3 s) pour la
+  liste des destinations.
 
-La vue a son propre `WebGLRenderer` dans `#map-3d` et ne rend que lorsqu'elle
-est visible ; le renderer de `src/ar.js` reste réservé à la session AR.
-Le choix d'une destination bascule en 3D ; sans `immersive-ar`, le bouton
-d'itinéraire devient **Voir en 3D**.
+## 6. Vue 3D (WebGPU)
 
-### 4.3 Départ et arrivée quelconques
+`CampusView3D` : murs extrudés (2,9 m), dalles depuis les cellules
+intérieures, portes / escaliers / ascenseurs en traits, niveaux espacés de
+3,6 m, bâtiments OSM extrudés. Sélecteur RDC / 1 / 2 / 3 / Tous ; étages
+inférieurs atténués ; vue orbite (glisser, pincer, deux doigts = déplacer)
+ou vue « Plan » nord en haut. Itinéraire : tube par niveau, liaison verticale,
+chevrons animés, balise de destination, marqueur de position et cap.
 
-Le départ vient d'un scan QR, d'un clic/toucher sur le plan, ou du sélecteur
-**Départ** de la feuille de destinations (`renderStartOptions()`). Les trois
-appellent `setCurrentNode()`. La liste d'arrivée est générée depuis
-**tous** les nœuds du graphe (`getOrderedNodes()`), couloirs compris ; un
-nœud ajouté à `building.json` apparaît automatiquement (visuel par défaut).
-Le test `every start/end pair…` vérifie les 144 paires : chemin valide sur des
-arêtes existantes et distance identique dans les deux sens.
+## 7. Réalité augmentée
 
-## 5. QR codes
+`ARGuide.prepare()` (au démarrage) : `immersive-ar` supporté ?
+`XRGPUBinding` présent ? puis création d'un `WebGPURenderer` compatible XR.
 
-Chaque QR encode **l'identifiant exact d'un nœud**, par exemple `ENTREE`,
-`HALL`, `SALLE_B12`. Le scanner normalise la valeur en majuscules.
-Sur ordinateur, le bouton **Importer une image QR** décode un fichier image
-avec le même backend (`BarcodeDetector` ou jsQR).
+`ARGuide.start(route, position)` (dans le toucher, première étape asynchrone) :
+`requestSession('immersive-ar', { requiredFeatures: ['webgpu', 'hit-test'],
+optionalFeatures: ['local-floor', 'anchors', 'dom-overlay'] })`. Une seule
+requête par toucher ; si la configuration complète est refusée, la cause est
+affichée et le toucher suivant utilise `['webgpu', 'hit-test']`.
 
-Génération locale :
+Avec Three.js r187, la boucle `setAnimationLoop` est posée **avant**
+`renderer.xr.setSession()`.
+
+**Orientation :** la boussole donne le cap vrai de la caméra, WebXR son lacet
+dans le monde AR ; leur différence (moyenne circulaire) convertit tout cap du
+plan en direction AR. Les 40 premiers mètres de l'itinéraire sont dessinés au
+sol en chevrons depuis la position du QR scanné ; la flèche posée au toucher
+prend le cap du segment le plus proche.
+
+**Prérequis téléphone :** Chrome Android à jour, Google Play Services for AR,
+et `chrome://flags/#webxr-webgpu-binding` → *Enabled*, puis redémarrer Chrome.
+La liaison WebXR/WebGPU n'est pas encore activée par défaut dans Chrome
+(Chrome Platform Status, fonctionnalité 5077077997649920).
+
+## 8. Boussole et GPS
+
+- `Compass` : `deviceorientationabsolute` (Android) ou `webkitCompassHeading`
+  (iOS). Cap de la caméra arrière à partir de la matrice Z-X'-Y'' ; téléphone à
+  plat → cap du haut de l'écran. Déclinaison +3,5° (El Ghazala). Filtre
+  circulaire et estimation de la gigue (fiable si < 12°).
+- `GpsTracker` : `watchPosition` haute précision → coordonnées du campus.
+  Pris comme départ seulement à l'extérieur et si la précision ≤ 30 m.
+
+## 9. Mode relevé
+
+Bouton **Relevé** : toucher une salle → saisir le nom de la plaque ;
+**Passage manquant** : deux touchers de part et d'autre d'une porte absente du
+plan. Stockage local, annulation, **Exporter** → `corrections.json` à fusionner
+dans `assets/campus/`, puis relancer l'import.
+
+## 10. QR codes
+
+Chaque QR encode l'id d'un lieu (`ENTREE_PRINCIPALE`, `AMPHI_KHAWAREZMI`,
+`ESCALIER_A`, …) ou le code d'une salle (`B1-07`). Alias : `ENTREE`, `HALL`.
+Cartes prêtes : `docs/qr-codes/` ; planche par niveau : `docs/qr-codes.html`.
+Lien direct : `?depart=ID&destination=ID`.
+
+## 11. Vérifications
 
 ```bash
-# Option 1 — qrencode
-qrencode -o SALLE_B12.png -s 8 -m 2 "SALLE_B12"
-
-# Option 2 — Python
-python - <<'PY'
-import qrcode
-qrcode.make('SALLE_B12').save('SALLE_B12.png')
-PY
+node --test scripts/test-navigation.mjs     # 13 tests campus / routage / boussole
+python -m http.server 8000                  # puis http://localhost:8000
 ```
 
-La planche `docs/qr-codes.html` regroupe les codes de test. Elle utilise
-actuellement l'API QuickChart pour dessiner les QR. Des PNG prêts à l'emploi
-sont aussi disponibles dans `docs/qr-codes/` (`entree.png`, `hall.png`,
-`couloir-est.png`, `salle-b12.png`, `demo-sheet.png`) avec la séquence de
-démonstration dans `docs/qr-codes/README.md`.
+## 12. Déploiement
 
-Impression : une étiquette par nœud, hauteur constante, dans le couloir.
-La position est mise à jour uniquement quand un QR est scanné.
-
-## 6. Routage
-
-`BuildingGraph.loadGraph(url)` charge le JSON, construit la liste d'adjacence,
-puis `findShortestPath(fromId, toId)` exécute Dijkstra. `getPathDistance()`
-somme les poids ; `getDirectionVector()` fournit la direction normalisée
-utilisée pour orienter la flèche.
-
-`AvoidStairsStrategy` existe comme point d'extension pour le multi-étages ;
-en v1, il délègue à Dijkstra car le graphe ne contient pas d'escalier.
-
-## 7. Scan caméra
-
-`QrScanner.start(video, canvas)` :
-
-1. attend la détection du backend (`BarcodeDetector` ou jsQR) ;
-2. demande la caméra arrière avec `getUserMedia` ;
-3. décode au maximum une frame toutes les 150 ms ;
-4. applique un cooldown de 2 s par valeur ;
-5. diffuse le résultat via `onDetect`.
-
-Le scanner s'arrête et libère les pistes caméra à la fermeture. Un jeton de
-génération annule un démarrage si l'utilisateur ferme l'overlay pendant la
-demande de permission.
-
-## 8. Réalité augmentée
-
-`ARGuide.start(route)` :
-
-1. vérifie `navigator.xr.isSessionSupported('immersive-ar')` ;
-2. demande une session avec `hit-test` (et `anchors` / `dom-overlay` si disponible) ;
-3. active `renderer.xr` et l'espace `local-floor` ;
-4. masque le cube, la grille et le halo de démonstration ;
-5. affiche un réticule à l'intersection détectée avec le sol ;
-6. sur `select`, place la flèche et crée un `XRAnchor` ;
-7. restaure la scène à la fin de la session.
-
-La page d'accueil est le plan SVG. `setARView(true)` masque le plan et affiche
-le canvas Three.js avant la session ; `setARView(false)` restaure le plan à la
-fin. Le cube de démonstration est masqué hors AR.
-
-La flèche est générée par `createArrow()` : forme extrudée plate de 1 m,
-origine à la queue, pointe vers +Z, matériau non éclairé.
-
-**Démarrage robuste (v2.3.1) :** `requestSession()` est appelé directement
-dans le geste de l'utilisateur, avec `local-floor`, `anchors` et `dom-overlay`
-en options. La racine du DOM overlay est `#ui-overlay` (jamais `body`).
-L'espace de référence est vérifié avant `renderer.xr.setSession()` :
-`local-floor` si accordé, sinon `local`. Un échec affiche sa cause réelle
-(`describeArError`) et bascule sur la vue 3D.
-
-**Une requête par geste (v2.3.2) :** Chrome considère le geste comme
-utilisé par `requestSession()`. `ARGuide.start()` ne fait donc qu'une seule
-requête par toucher, sans `await` préalable. Si la configuration complète
-(DOM overlay, ancres) est refusée, la cause est affichée et le toucher suivant
-utilise la configuration minimale (`hit-test` seul, sortie par le bouton
-Retour d'Android).
-
-**Limite v2.3.2 :** l'orientation utilise la direction de la caméra au moment
-du placement. La calibration au nord du bâtiment (orientation du QR ou
-boussole) est prévue au Sprint 5.
-
-## 9. HTTPS et déploiement
-
-`getUserMedia`, WebXR et le Service Worker exigent un contexte sécurisé.
-
-- Local : `http://localhost:8000` est accepté.
-- Téléphone : utiliser GitHub Pages ou un tunnel HTTPS ; une IP LAN en HTTP
-  est refusée par Chrome.
-- GitHub Pages : Settings → Pages → Deploy from branch → `main` / root.
-
-## 10. Vérifications
+HTTPS obligatoire (caméra, WebXR, WebGPU, Service Worker). Après une
+modification d'un fichier mis en cache, augmenter `CACHE_NAME` dans `sw.js`.
 
 ```bash
-# Tests du graphe
-node --test scripts/test-navigation.mjs
-
-# Serveur local
-python -m http.server 8000
+vercel --prod --yes
 ```
-
-Vérifications manuelles :
-
-- QR `ENTREE` scanné → pastille « Vous êtes ici : Entrée principale » ;
-- destination Salle B12 → itinéraire 26 m en 3 étapes ;
-- bouton Guidage AR → session si WebXR/ARCore est disponible, sinon message ;
-- mode avion après un premier chargement → le shell et Three.js démarrent ;
-- plan : 12 nœuds, 12 arêtes, 9 libellés, clic `ENTREE` → `SALLE_B12` = 26 m ;
-- upload QR sur ordinateur → même position et même itinéraire.
-
-## 11. Limites connues
-
-- Un seul étage.
-- Position discrète (QR uniquement), pas de suivi continu.
-- Orientation AR non calibrée sur le nord du bâtiment.
-- Test Android/ARCore encore à documenter.
-- Pages non activé à la date de rédaction.
