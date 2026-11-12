@@ -3,6 +3,27 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.2] - 2026-11-12
+
+### Fixed
+
+- **"The requested session requires user activation" on Android.** When the
+  full AR configuration (DOM overlay + anchors) was rejected, `ar.js`
+  silently retried `requestSession()` in the same tap. Chrome treats the tap
+  as used by the first request, so the retry always failed with this message
+  and the real cause was hidden.
+  Now there is exactly **one** `requestSession()` per tap: if the full
+  configuration is rejected, the app shows the real cause and asks for a
+  second tap, which uses the simplified hit-test-only configuration.
+- Nothing is awaited before `requestSession()` any more (the startup support
+  check is reused), and double taps while a session is starting are ignored.
+
+### Changed
+
+- Simplified AR mode (no DOM overlay): a message explains beforehand that the
+  page UI is hidden and that the Android **Back** button exits AR.
+- Cache bumped to `v2.3.2`.
+
 ## [2.3.1] - 2026-11-12
 
 ### Fixed

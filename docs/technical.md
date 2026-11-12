@@ -192,7 +192,14 @@ L'espace de référence est vérifié avant `renderer.xr.setSession()` :
 `local-floor` si accordé, sinon `local`. Un échec affiche sa cause réelle
 (`describeArError`) et bascule sur la vue 3D.
 
-**Limite v2.3.1 :** l'orientation utilise la direction de la caméra au moment
+**Une requête par geste (v2.3.2) :** Chrome considère le geste comme
+utilisé par `requestSession()`. `ARGuide.start()` ne fait donc qu'une seule
+requête par toucher, sans `await` préalable. Si la configuration complète
+(DOM overlay, ancres) est refusée, la cause est affichée et le toucher suivant
+utilise la configuration minimale (`hit-test` seul, sortie par le bouton
+Retour d'Android).
+
+**Limite v2.3.2 :** l'orientation utilise la direction de la caméra au moment
 du placement. La calibration au nord du bâtiment (orientation du QR ou
 boussole) est prévue au Sprint 5.
 
