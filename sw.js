@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Author       : Oussema Harrabi
  * Created      : 2026-11-05
- * Modified     : 2026-11-12
- * Version      : 3.1.0 (offline shell, SUP'COM campus, Three.js r187 WebGPU)
+ * Modified     : 2026-11-18
+ * Version      : 3.5.0 (no forced reload; guidance UI; camera mode; guide arrow HUD; diagnostic AR WebGPU; offline shell, SUP'COM campus, Three.js r187 WebGPU)
  * Description  : Service Worker for the Indoor Wayfinder PWA. Precaches the
  *                app shell, the SUP'COM campus data and the pinned Three.js
  *                WebGPU build, serves navigations
@@ -15,7 +15,7 @@
  * ==========================================================================
  */
 
-const CACHE_NAME = 'indoor-wayfinder-v3.1.0';
+const CACHE_NAME = 'indoor-wayfinder-v3.5.1';
 const SCOPE_URL = self.registration.scope;
 
 /** Application files required to boot the shell offline. */
@@ -32,6 +32,12 @@ const APP_SHELL = [
   new URL('src/gpu.js', SCOPE_URL).href,
   new URL('src/geo.js', SCOPE_URL).href,
   new URL('src/survey.js', SCOPE_URL).href,
+  new URL('src/route-follower.js', SCOPE_URL).href,
+  new URL('src/camera-guide.js', SCOPE_URL).href,
+  new URL('src/voice.js', SCOPE_URL).href,
+  new URL('src/nav-format.js', SCOPE_URL).href,
+  new URL('diagnostic.html', SCOPE_URL).href,
+  new URL('src/diagnostic.js', SCOPE_URL).href,
   new URL('assets/campus/supcom.json', SCOPE_URL).href,
   new URL('assets/icons/icon-180.png', SCOPE_URL).href,
   new URL('assets/icons/icon-192.png', SCOPE_URL).href,
@@ -69,6 +75,10 @@ self.addEventListener('install', (event) => {
  * activate
  * --------
  * Removes caches from older app versions and takes control immediately.
+ * Open tabs are NOT force-reloaded here: on a first visit that reloaded the
+ * page ~10 s after opening (in the middle of a QR scan), and after a deploy
+ * it interrupted AR / camera guidance. The page itself reloads once after an
+ * update, when no guidance is running (registerServiceWorker in main.js).
  */
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -78,15 +88,7 @@ self.addEventListener('activate', (event) => {
           .filter((cacheName) => cacheName !== CACHE_NAME)
           .map((cacheName) => caches.delete(cacheName))
       ))
-      .then(async () => {
-        await self.clients.claim();
-        // Force open tabs to reload from the new cache. This also recovers
-        // pages that were loaded from an older deployment.
-        const windowClients = await self.clients.matchAll({ type: 'window' });
-        await Promise.all(windowClients.map((client) =>
-          client.navigate(client.url).catch(() => undefined)
-        ));
-      })
+      .then(() => self.clients.claim())
   );
 });
 

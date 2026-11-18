@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-11
- * Modified     : 2026-11-12
- * Version      : 3.1.0 (live turn-by-turn AR on WebGPU)
+ * Modified     : 2026-11-18
+ * Version      : 3.3.0 (live turn-by-turn AR on WebGPU, floating guide arrow, fixed-distance fallback)
  * Description  : WebXR immersive-ar session rendered with Three.js
  *                WebGPURenderer (session feature 'webgpu', XRGPUBinding).
  *                Every frame, the ARCore camera pose is turned into a
@@ -16,15 +16,24 @@
  *                - the next 25 m of the route as flowing chevrons on the floor,
  *                - large turn arrows at the coming turns, stairs / lift signs,
  *                - the destination pin,
+ *                - a big floating guide arrow ("Live View" style) 2 m in
+ *                  front of the user at chest height, pointing along the
+ *                  route: blue, grey while calibrating, orange off route,
+ *                  green at arrival,
  *                - the real walls as invisible depth occluders, so guidance
  *                  never shows through a wall.
- *                A tap anchors an arrow (XRAnchor) oriented along the route.
+ *                A tap anchors an arrow (XRAnchor) oriented along the route:
+ *                on the floor hit, or 1.5 m ahead on the estimated floor when
+ *                ARCore finds no floor (FloorEstimator, after 3 s).
  * ==========================================================================
  */
 
 import * as THREE from 'three';
 import { createWebGPURenderer, hasWebXRWebGPUBinding } from './gpu.js';
-import { ARGuidance, projectOnPolyline, cumulativeLengths } from './ar-guidance.js';
+import {
+  ARGuidance, projectOnPolyline, cumulativeLengths, FloorEstimator, FLOOR_SOURCE, fixedArrowPoint,
+  GUIDE_ARROW, GUIDE_MODE, guideArrowMode, smoothAngle
+} from './ar-guidance.js';
 import { bearingOf } from './navigation.js';
 
 /** Reference spaces in preference order; 'local' is always granted. */
@@ -33,6 +42,8 @@ const WALL_HEIGHT = 2.9;
 const CHEVRON_COUNT = 34;
 const CHEVRON_SPACING = 0.75;
 const CAMERA_HEIGHT = 1.45; // m above the floor when no floor hit yet
+const FLOOR_FALLBACK_MS = 3000; // no floor after this → estimated floor
+const FIXED_ARROW_DISTANCE = 1.5; // m ahead when a tap finds no floor
 
 /**
  * isUserActivationError
@@ -96,13 +107,14 @@ export class ARGuide {
     this.reticle = null;
     this.anchoredArrow = null;
     this.anchor = null;
-    this.floorHits = [];
-    this.floorY = null;
+    this.floor = new FloorEstimator({ cameraHeight: CAMERA_HEIGHT, fallbackAfterMs: FLOOR_FALLBACK_MS });
     this.occluderLevel = null;
     this.occluders = null;
     this.chevrons = [];
     this.turnArrows = [];
     this.destinationPin = null;
+    this.guideArrow = null;
+    this.guideArrowPose = null;
     this.route = null;
     this.destination = null;
     this.startPoint = null;
@@ -198,8 +210,7 @@ export class ARGuide {
     try {
       const referenceSpaceType = await this.#pickReferenceSpaceType(session);
       this.guidance.reset();
-      this.floorHits = [];
-      this.floorY = null;
+      this.floor.reset();
       this.arrivedNotified = false;
       // Three.js r187 drives the XR frames with the loop registered BEFORE
       // setSession(), so it must be in place first.
@@ -219,8 +230,14 @@ export class ARGuide {
       throw error;
     }
 
-    session.addEventListener('select', () => {
-      this.#placeArrow().catch((error) => console.warn('[ar] Arrow placement failed:', error));
+    // event.frame is only valid during the dispatch: #placeArrow uses it
+    // synchronously (frame.createAnchor for the fixed-distance arrow).
+    session.addEventListener('select', (event) => {
+      try {
+        this.#placeArrow(event.frame);
+      } catch (error) {
+        console.warn('[ar] Arrow placement failed:', error);
+      }
     });
 
     this.isActive = true;
@@ -319,29 +336,24 @@ export class ARGuide {
     const camera = this.#cameraState();
     if (!referenceSpace || !camera) return;
 
-    // Floor height from hit tests below the camera (median of recent hits)
+    // Floor height: ARCore hits below the camera, else the estimated floor
     const results = frame.getHitTestResults(this.hitTestSource);
-    this.lastHit = results.length ? results[0] : null;
-    if (this.lastHit) {
-      const pose = this.lastHit.getPose(referenceSpace);
+    this.lastHit = null;
+    if (results.length) {
+      const pose = results[0].getPose(referenceSpace);
       if (pose) {
-        const y = pose.transform.position.y;
-        if (y < camera.position.y - 0.7 && y > camera.position.y - 2.4) {
-          this.floorHits.push(y);
-          if (this.floorHits.length > 15) this.floorHits.shift();
-          this.floorY = median(this.floorHits);
-        }
+        this.lastHit = results[0];
+        this.floor.addHit(pose.transform.position.y, camera.position.y);
         if (this.reticle) {
           this.reticle.visible = true;
           this.reticle.position.set(pose.transform.position.x, pose.transform.position.y + 0.005, pose.transform.position.z);
         }
       }
-    } else if (this.reticle) {
-      this.reticle.visible = false;
     }
-    const floorY = this.floorY !== null && Math.abs(this.floorY - (camera.position.y - CAMERA_HEIGHT)) < 1.2
-      ? this.floorY
-      : camera.position.y - CAMERA_HEIGHT;
+    if (!this.lastHit && this.reticle) this.reticle.visible = false;
+    const floorState = this.floor.update(camera.position.y, time);
+    const floorY = floorState.y;
+    if (floorState.changed) this.#announceFloor(floorState.source);
 
     // Localization
     if (!this.guidance.started) {
@@ -361,6 +373,7 @@ export class ARGuide {
     if (this.occluderLevel !== state.position.level) this.#buildOccluders(state.position.level);
     this.#updatePath(state, time);
     this.#updateDestination(state);
+    const guideMode = this.#updateGuideArrow(state, camera, time);
 
     if (this.anchor && this.anchoredArrow) {
       const anchorPose = frame.getPose(this.anchor.anchorSpace, referenceSpace);
@@ -374,6 +387,8 @@ export class ARGuide {
     }
     if (time - this.lastGuidanceEmit > 160) {
       this.lastGuidanceEmit = time;
+      state.floor = floorState.source;
+      state.guideArrow = guideMode;
       this.onGuidance(state);
     }
   }
@@ -405,6 +420,54 @@ export class ARGuide {
     this.destinationPin = createDestinationPin();
     this.destinationPin.visible = false;
     this.planInner.add(this.destinationPin);
+
+    // Floating guide arrow, in AR world coordinates (follows the phone)
+    this.guideArrow = createGuideArrow();
+    this.guideArrow.visible = false;
+    this.guideArrowPose = null;
+    this.scene.add(this.guideArrow);
+  }
+
+  /**
+   * #updateGuideArrow
+   * -----------------
+   * Keeps the big arrow GUIDE_ARROW.DISTANCE in front of the phone at chest
+   * height, pointing along the route (bearing to the point 4 m ahead on the
+   * route). Position and direction are smoothed so the arrow neither shakes
+   * with the hand nor snaps at corners.
+   *
+   * @param {Object} state – Guidance state.
+   * @param {{position:Object, yaw:number}} camera – Phone pose.
+   * @param {number} time – Frame time (ms).
+   * @returns {string} GUIDE_MODE value shown.
+   */
+  #updateGuideArrow(state, camera, time) {
+    const arrow = this.guideArrow;
+    const mode = guideArrowMode(state);
+    if (!arrow) return mode;
+
+    const target = fixedArrowPoint(camera, GUIDE_ARROW.DISTANCE, camera.position.y - GUIDE_ARROW.DROP);
+    const [dx, dz] = this.guidance.directionOfBearing(state.targetBearing);
+    const yaw = Math.atan2(dx, dz);
+    const pose = this.guideArrowPose;
+    if (!pose) {
+      this.guideArrowPose = { x: target.x, y: target.y, z: target.z, yaw, time };
+    } else {
+      const dt = Math.min(250, Math.max(0, time - pose.time));
+      const a = 1 - Math.exp(-dt / GUIDE_ARROW.POSITION_TAU_MS);
+      pose.x += (target.x - pose.x) * a;
+      pose.y += (target.y - pose.y) * a;
+      pose.z += (target.z - pose.z) * a;
+      pose.yaw = smoothAngle(pose.yaw, yaw, dt, GUIDE_ARROW.YAW_TAU_MS);
+      pose.time = time;
+    }
+    const p = this.guideArrowPose;
+    const bob = mode === GUIDE_MODE.ARRIVED ? Math.sin(time / 250) * 0.06 : 0;
+    arrow.position.set(p.x, p.y + bob, p.z);
+    arrow.rotation.y = p.yaw;
+    arrow.userData.setMode(mode, time, state.relativeTurn || 0);
+    arrow.visible = true;
+    return mode;
   }
 
   /** Depth-only walls of the current floor: guidance never shows through them. */
@@ -489,22 +552,60 @@ export class ARGuide {
   // Tap: anchored arrow oriented along the route (cahier des charges)
   // ===========================================================================
 
-  async #placeArrow() {
-    if (!this.lastHit || !this.guidance.started) return;
+  /**
+   * #announceFloor
+   * --------------
+   * One status message when the floor source changes.
+   * @param {string} source – FLOOR_SOURCE value.
+   */
+  #announceFloor(source) {
+    if (source === FLOOR_SOURCE.ESTIMATED) {
+      this.onStatus(`Sol non détecté : guidage posé à une hauteur estimée. Touchez l’écran pour poser la flèche à ${FIXED_ARROW_DISTANCE} m devant vous ; visez le sol pour l’affiner.`);
+    } else if (source === FLOOR_SOURCE.DETECTED) {
+      this.onStatus('Sol détecté : le guidage est posé au sol.');
+    }
+  }
+
+  /**
+   * #placeArrow
+   * -----------
+   * Tap: places the arrow, oriented along the route.
+   * - Floor hit under the reticle → arrow on the hit, anchored on it.
+   * - No floor hit (risk "Hit Testing instable") → arrow FIXED_ARROW_DISTANCE
+   *   in front of the phone, at the current floor height, anchored with
+   *   XRFrame.createAnchor when the browser allows it.
+   * Synchronous: `frame` is only valid during the select event.
+   *
+   * @param {XRFrame} [frame] – Frame of the select event.
+   */
+  #placeArrow(frame) {
+    if (!this.guidance.started) return;
     const referenceSpace = this.renderer.xr.getReferenceSpace();
-    const pose = this.lastHit.getPose(referenceSpace);
-    if (!pose) return;
+    if (!referenceSpace) return;
+    const hitPose = this.lastHit ? this.lastHit.getPose(referenceSpace) : null;
+
+    let point;
+    let mode;
+    if (hitPose) {
+      const p = hitPose.transform.position;
+      point = { x: p.x, y: p.y, z: p.z };
+      mode = 'hit';
+    } else {
+      const camera = this.#cameraState();
+      if (!camera || this.floor.y === null) return;
+      point = fixedArrowPoint(camera, FIXED_ARROW_DISTANCE, this.floor.y);
+      mode = 'fixed';
+    }
 
     if (!this.anchoredArrow) {
       this.anchoredArrow = createTurnArrow();
       this.anchoredArrow.userData.setKind('turn');
       this.scene.add(this.anchoredArrow);
     }
-    const p = pose.transform.position;
-    this.anchoredArrow.position.set(p.x, p.y + 0.005, p.z);
+    this.anchoredArrow.position.set(point.x, point.y + 0.005, point.z);
 
-    // Bearing of the route segment closest to the tapped point
-    const [cx, cy] = this.guidance.toCampus(p.x, p.z);
+    // Bearing of the route segment closest to the arrow
+    const [cx, cy] = this.guidance.toCampus(point.x, point.z);
     const leg = this.route && this.route.legs ? (this.route.legs.find((l) => l.level === this.guidance.level) || this.route.legs[0]) : null;
     let bearing = null;
     if (leg && leg.points.length > 1) {
@@ -518,12 +619,32 @@ export class ARGuide {
     }
     this.anchoredArrow.visible = true;
 
+    // Replace the previous anchor (requested synchronously, inside the event)
+    if (this.anchor && typeof this.anchor.delete === 'function') this.anchor.delete();
+    this.anchor = null;
+    let anchorRequest = null;
     try {
-      if (typeof this.lastHit.createAnchor === 'function') this.anchor = await this.lastHit.createAnchor();
+      if (mode === 'hit' && typeof this.lastHit.createAnchor === 'function') {
+        anchorRequest = this.lastHit.createAnchor();
+      } else if (mode === 'fixed' && frame && typeof frame.createAnchor === 'function' && typeof XRRigidTransform !== 'undefined') {
+        anchorRequest = frame.createAnchor(new XRRigidTransform(point), referenceSpace);
+      }
     } catch (error) {
-      console.warn('[ar] XRAnchor unavailable; keeping the hit pose:', error);
+      anchorRequest = null;
     }
-    if (bearing !== null) this.onStatus(`Flèche ancrée, orientée vers ${Math.round(bearing)}° (sens de l’itinéraire).`);
+    if (anchorRequest) {
+      const arrow = this.anchoredArrow;
+      anchorRequest
+        .then((anchor) => {
+          // Ignore an anchor that arrives after a newer tap or the session end
+          if (this.anchoredArrow === arrow && this.anchor === null) this.anchor = anchor;
+          else if (anchor && anchor.delete) anchor.delete();
+        })
+        .catch((error) => console.warn('[ar] XRAnchor unavailable; keeping the pose:', error));
+    }
+
+    const where = mode === 'hit' ? 'Flèche ancrée au sol' : `Flèche posée à ${FIXED_ARROW_DISTANCE} m devant vous (sol estimé)`;
+    this.onStatus(bearing !== null ? `${where}, orientée vers ${Math.round(bearing)}° (sens de l’itinéraire).` : `${where}.`);
   }
 
   // ===========================================================================
@@ -538,7 +659,7 @@ export class ARGuide {
       this.hitTestSource.cancel();
       this.hitTestSource = null;
     }
-    for (const object of [this.reticle, this.anchoredArrow]) {
+    for (const object of [this.reticle, this.anchoredArrow, this.guideArrow]) {
       if (!object) continue;
       this.scene.remove(object);
       disposeObject(object);
@@ -547,8 +668,13 @@ export class ARGuide {
       this.planInner.remove(child);
       disposeObject(child);
     }
+    if (this.anchor && typeof this.anchor.delete === 'function') {
+      try { this.anchor.delete(); } catch (error) { /* session already gone */ }
+    }
     this.reticle = null;
     this.anchoredArrow = null;
+    this.guideArrow = null;
+    this.guideArrowPose = null;
     this.anchor = null;
     this.occluders = null;
     this.occluderLevel = null;
@@ -566,11 +692,6 @@ export class ARGuide {
 // =============================================================================
 // Geometry
 // =============================================================================
-
-function median(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
-}
 
 function segmentAt(cumulative, d) {
   for (let i = 1; i < cumulative.length; i++) if (d <= cumulative[i]) return i - 1;
@@ -637,6 +758,174 @@ export function createTurnArrow() {
     sign.material.color.setHex(kind === 'lift' ? 0x22c55e : 0xef4444);
   };
   return group;
+}
+
+/**
+ * createGuideArrow
+ * ----------------
+ * Big floating arrow (≈ 64 cm), blue body with a white rim, drawn on top of
+ * everything (no depth test) so walls and occluders never hide it.
+ * userData.setMode(mode, time, turnDeg) fades colour / transparency, sets
+ * the tilt, leans into the turn, and plays the pop-in and the pulse; a soft
+ * shadow floats under it.
+ *
+ * @returns {THREE.Group}
+ */
+/**
+ * drawCapsLast
+ * ------------
+ * The guide arrow is drawn without depth test (never hidden by walls), so
+ * its triangles are painted in buffer order. ExtrudeGeometry stores the caps
+ * (top / bottom faces) before the sides; at the concave head–shaft notch a
+ * side face would then be painted over the top face. Putting the sides
+ * first and the caps last keeps the visible top face on top.
+ *
+ * @param {THREE.ExtrudeGeometry} geometry – Non-indexed, groups [caps, sides].
+ * @returns {THREE.BufferGeometry} Same geometry, sides first, no groups.
+ */
+function drawCapsLast(geometry) {
+  const [caps, sides] = geometry.groups;
+  if (!caps || !sides || geometry.index) return geometry;
+  for (const name of Object.keys(geometry.attributes)) {
+    const attribute = geometry.attributes[name];
+    const size = attribute.itemSize;
+    const source = attribute.array;
+    const reordered = new source.constructor(source.length);
+    reordered.set(source.subarray(sides.start * size, (sides.start + sides.count) * size), 0);
+    reordered.set(source.subarray(caps.start * size, (caps.start + caps.count) * size), sides.count * size);
+    geometry.setAttribute(name, new THREE.BufferAttribute(reordered, size));
+  }
+  geometry.clearGroups();
+  return geometry;
+}
+
+export function createGuideArrow() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.11, -0.3);
+  shape.lineTo(-0.11, 0.02);
+  shape.lineTo(-0.27, 0.02);
+  shape.lineTo(0, 0.34);
+  shape.lineTo(0.27, 0.02);
+  shape.lineTo(0.11, 0.02);
+  shape.lineTo(0.11, -0.3);
+  shape.closePath();
+  const geometry = drawCapsLast(new THREE.ExtrudeGeometry(shape, {
+    depth: 0.07, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 2
+  }));
+  geometry.rotateX(Math.PI / 2); // tip along +Z, lying flat
+  geometry.translate(0, 0.035, 0);
+
+  const bodyMaterial = new THREE.MeshStandardMaterial({
+    color: 0x1a73e8, emissive: 0x0b3d91, roughness: 0.35, metalness: 0.05,
+    transparent: true, depthTest: false, depthWrite: false
+  });
+  const rimMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff, side: THREE.BackSide, transparent: true, depthTest: false, depthWrite: false
+  });
+  const rim = new THREE.Mesh(geometry, rimMaterial);
+  rim.scale.setScalar(1.09);
+  rim.renderOrder = 20;
+  const body = new THREE.Mesh(geometry, bodyMaterial);
+  body.renderOrder = 21;
+
+  const tilt = new THREE.Group(); // pitch: tip raised towards the viewer
+  tilt.add(rim, body);
+  const bank = new THREE.Group(); // roll: leans into the turn
+  bank.add(tilt);
+  const group = new THREE.Group();
+  const shadow = createSoftShadow();
+  group.add(shadow, bank);
+
+  const styles = {
+    [GUIDE_MODE.GUIDE]: { color: 0x1a73e8, emissive: 0x0b3d91, opacity: 0.95 },
+    [GUIDE_MODE.OFF_ROUTE]: { color: 0xf59e0b, emissive: 0x7c4a03, opacity: 0.95 },
+    [GUIDE_MODE.ARRIVED]: { color: 0x22c55e, emissive: 0x0f5a2a, opacity: 0.95 },
+    [GUIDE_MODE.CALIBRATING]: { color: 0x9ca3af, emissive: 0x2a2f38, opacity: 0.55 }
+  };
+  const targetColor = new THREE.Color();
+  const targetEmissive = new THREE.Color();
+  let currentMode = null;
+  let appearAt = null;
+  let lastTime = null;
+  let lean = 0;
+  let pitch = -0.45;
+
+  /** Next setMode() starts the "pop" animation again (new guidance). */
+  group.userData.appear = () => { appearAt = null; };
+
+  /**
+   * @param {string} mode – GUIDE_MODE value.
+   * @param {number} time – Frame time (ms).
+   * @param {number} [turnDeg=0] – Route direction relative to the phone (+ = right).
+   */
+  group.userData.setMode = (mode, time, turnDeg = 0) => {
+    const style = styles[mode] || styles[GUIDE_MODE.GUIDE];
+    if (appearAt === null) {
+      appearAt = time;
+      bodyMaterial.color.setHex(style.color);
+      bodyMaterial.emissive.setHex(style.emissive);
+    }
+    const dt = lastTime === null ? 0 : Math.min(250, Math.max(0, time - lastTime));
+    lastTime = time;
+    const k = 1 - Math.exp(-dt / 160);
+
+    // Colour and transparency fade towards the new mode
+    targetColor.setHex(style.color);
+    targetEmissive.setHex(style.emissive);
+    bodyMaterial.color.lerp(targetColor, mode === currentMode ? k : Math.max(k, 0.08));
+    bodyMaterial.emissive.lerp(targetEmissive, mode === currentMode ? k : Math.max(k, 0.08));
+    bodyMaterial.opacity += (style.opacity - bodyMaterial.opacity) * k;
+    rimMaterial.opacity = bodyMaterial.opacity;
+    shadow.material.opacity = 0.55 * bodyMaterial.opacity;
+    currentMode = mode;
+
+    // Arrived: tip down ("c'est ici"); otherwise tip raised ~26° to be readable
+    pitch += ((mode === GUIDE_MODE.ARRIVED ? 1.2 : -0.45) - pitch) * k;
+    tilt.rotation.x = pitch;
+    // Lean into the turn (up to ~17°), like a vehicle taking a bend
+    const targetLean = mode === GUIDE_MODE.ARRIVED ? 0 : Math.max(-1, Math.min(1, turnDeg / 90)) * 0.3;
+    lean += (targetLean - lean) * k;
+    bank.rotation.z = lean;
+
+    // "Pop" when it appears (ease-out-back, 350 ms), then a gentle pulse
+    const t = Math.min(1, (time - appearAt) / 350);
+    const pop = t >= 1 ? 1 : 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2);
+    const pulse = mode === GUIDE_MODE.GUIDE ? 1 + 0.04 * Math.sin(time / 220) : 1;
+    bank.scale.setScalar(Math.max(0.01, pop * pulse));
+    shadow.scale.setScalar(Math.max(0.01, pop));
+  };
+  return group;
+}
+
+/**
+ * createSoftShadow
+ * ----------------
+ * Blurred dark ellipse 25 cm under the floating arrow: a depth cue that
+ * makes it read as an object in the room. Radial gradient drawn once on a
+ * small canvas (CanvasTexture), no lights or shadow maps needed.
+ *
+ * @returns {THREE.Mesh}
+ */
+function createSoftShadow() {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
+  gradient.addColorStop(0.55, 'rgba(0, 0, 0, 0.3)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture, transparent: true, opacity: 0.5, depthTest: false, depthWrite: false
+  });
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.9).rotateX(-Math.PI / 2), material);
+  shadow.position.y = -0.25;
+  shadow.renderOrder = 19;
+  return shadow;
 }
 
 function createDestinationPin() {

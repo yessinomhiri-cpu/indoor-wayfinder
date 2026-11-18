@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-12
- * Version      : 3.1.0 (SUP'COM campus – WebGPU, multi-floor, compass, GPS)
+ * Modified     : 2026-11-18
+ * Version      : 3.5.0 (guidance UI, voice, journey bar; camera mode; guide arrow HUD; diagnostic AR WebGPU; SUP'COM campus – WebGPU, multi-floor, compass, GPS)
  * Description  : Application controller and NavigationService facade: wires
  *                the QR scanner, the SUP'COM campus model and router, the
  *                WebGPU 3D view, immersive-ar guidance, compass, outdoor GPS,
@@ -16,15 +16,18 @@
  * ==========================================================================
  */
 
-import { QrScanner } from './scanner.js';
+import { QrScanner, describeCameraError } from './scanner.js';
 import { CampusMap, CampusRouter, ShortestPathStrategy, AvoidStairsStrategy } from './navigation.js';
 import { CampusView3D } from './view3d.js';
 import { ARGuide, isUserActivationError } from './ar.js';
+import { CameraGuide } from './camera-guide.js';
+import { Voice, VoiceAnnouncer } from './voice.js';
+import { formatInstruction, formatRemaining, TURN_ICONS } from './nav-format.js';
 import { Compass, GpsTracker, shortCardinal } from './geo.js';
 import { SurveyStore } from './survey.js';
 import { hasWebGPU } from './gpu.js';
 
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.5.1';
 const CAMPUS_URL = 'assets/campus/supcom.json';
 const WALKING_SPEED = 1.2; // m/s
 
@@ -74,6 +77,7 @@ const routeStepsElement = $('route-steps');
 const avoidStairsInput = $('route-avoid-stairs');
 const startArButton = $('btn-start-ar');
 const startArLabelElement = $('btn-start-ar-label');
+const startModeChipElement = $('btn-start-ar-mode');
 const stopArButton = $('btn-stop-ar');
 const closeRouteButton = $('btn-close-route');
 const rescanRouteButton = $('btn-rescan-route');
@@ -278,6 +282,25 @@ function updateRoute() {
   }
   updateMapHint();
   updateFloorTabs();
+  updateJourneySteps();
+}
+
+/**
+ * updateJourneySteps
+ * ------------------
+ * 3-step bar: ① Scanner (position known) ② Destination ③ Guidage (route ready).
+ */
+function updateJourneySteps() {
+  const done = [Boolean(currentPosition), Boolean(currentDestinationId), false];
+  const routeReady = Boolean(currentRoute && currentRoute.found && currentPosition);
+  const current = !done[0] ? 1 : !done[1] ? 2 : 3;
+  document.querySelectorAll('[data-journey-step]').forEach((item) => {
+    const step = Number(item.dataset.journeyStep);
+    item.classList.toggle('is-done', done[step - 1]);
+    item.classList.toggle('is-current', step === current && (step !== 3 || routeReady));
+    const button = item.querySelector('button');
+    if (button) button.setAttribute('aria-current', step === current ? 'step' : 'false');
+  });
 }
 
 function renderRoutePanel(destination) {
@@ -285,11 +308,13 @@ function renderRoutePanel(destination) {
   if (!destination) {
     routePanelElement.classList.remove('is-open');
     routePanelElement.hidden = true;
+    document.body.classList.remove('has-route-panel');
     return;
   }
   routeTitleElement.textContent = `${destination.name} · ${levelShort(destination.level)}`;
   routeStepsElement.replaceChildren();
   startArButton.disabled = true;
+  if (startCameraButton) startCameraButton.disabled = true;
 
   if (!currentPosition) {
     routeSummaryElement.textContent = 'Scannez un QR code ou choisissez un départ pour calculer l’itinéraire.';
@@ -328,9 +353,11 @@ function renderRoutePanel(destination) {
       routeStepsElement.appendChild(item);
     }
     startArButton.disabled = false;
+    if (startCameraButton) startCameraButton.disabled = false;
   }
 
   routePanelElement.hidden = false;
+  document.body.classList.add('has-route-panel');
   routePanelElement.classList.add('is-compact');
   requestAnimationFrame(() => {
     routePanelElement.classList.add('is-open');
@@ -341,6 +368,7 @@ function renderRoutePanel(destination) {
 function hideRoutePanel() {
   routePanelElement.classList.remove('is-open');
   routePanelElement.hidden = true;
+  document.body.classList.remove('has-route-panel');
   if (view) view.resize();
 }
 
@@ -541,7 +569,9 @@ function setupTouchDismissSheet(sheet, handle) {
 function handleQrDetection(rawQrCode) {
   const value = (rawQrCode || '').trim();
   if (!campus) { showStatusToast('Plan du campus en cours de chargement…', 3000); return; }
+  const resumeCamera = resumeCameraAfterScan;
   if (setCurrentPlace(value, 'qr')) {
+    resumeCameraAfterScan = false;
     if ('vibrate' in navigator) {
       try { navigator.vibrate([100, 50, 100]); } catch (error) { /* not supported */ }
     }
@@ -549,6 +579,8 @@ function handleQrDetection(rawQrCode) {
     showStatusToast(`📍 Vous êtes ici : ${place.name} (${levelShort(place.level)})`, 6000);
     closeScanOverlay();
     if (view) view.focusPlace(place);
+    // Rescan from the camera mode: go straight back to the camera guidance
+    if (resumeCamera && currentRoute && currentRoute.found) startCameraGuide();
   } else {
     showStatusToast(`⚠️ QR code inconnu : ${value}`, 3500);
   }
@@ -563,16 +595,52 @@ async function openScanOverlay() {
   scanOverlayElement.setAttribute('aria-hidden', 'false');
   scanTriggerButton.setAttribute('aria-expanded', 'true');
   closeScanButton.focus();
+  await startScanCamera();
+}
+
+/**
+ * startScanCamera
+ * ---------------
+ * Starts the QR camera. A failure is explained ON the scan screen (the
+ * toast layer is underneath it): reason, fix, Réessayer / Choisir mon départ.
+ * A camera that opens but sends no image is reported after 4 s.
+ */
+async function startScanCamera() {
+  hideScanError();
+  const attempt = ++scanAttempt;
   try {
     await qrScanner.start(scanVideoElement, scanCanvasElement);
   } catch (error) {
     console.warn('[main] Caméra indisponible :', error);
-    showStatusToast('Accès à la caméra refusé ou non disponible', 4000);
+    if (attempt === scanAttempt && scanOverlayElement.classList.contains('is-open')) showScanError(error && error.name);
+    return;
   }
+  setTimeout(() => {
+    const open = scanOverlayElement.classList.contains('is-open');
+    const noImage = scanVideoElement.readyState < 2 || !scanVideoElement.videoWidth;
+    if (attempt === scanAttempt && open && noImage) showScanError('NoFrames');
+  }, 4000);
+}
+
+let scanAttempt = 0;
+
+function showScanError(name) {
+  const { title, text } = describeCameraError(name);
+  $('scan-error-title').textContent = title;
+  $('scan-error-text').textContent = text;
+  $('scan-error').hidden = false;
+  scanOverlayElement.classList.add('has-camera-error');
+}
+
+function hideScanError() {
+  $('scan-error').hidden = true;
+  scanOverlayElement.classList.remove('has-camera-error');
 }
 
 function closeScanOverlay() {
   if (!scanOverlayElement) return;
+  scanAttempt++;
+  hideScanError();
   qrScanner.stop();
   scanOverlayElement.classList.remove('is-open');
   scanOverlayElement.setAttribute('aria-hidden', 'true');
@@ -806,18 +874,20 @@ function updateARControls(isActive) {
   setARView(isActive);
   if (isActive) {
     requestWakeLock();
+    voiceAnnouncer.reset();
     arLandmarkRefresh = 0;
     lastArState = null;
-    arInstructionText.textContent = 'Initialisation du suivi…';
-    arInstructionSub.textContent = 'Visez le sol et marchez lentement';
+    renderNavCard(arCard, { card: { distance: '', text: 'Initialisation du suivi…', icon: 'straight' }, sub: 'Visez le sol et marchez lentement', remaining: NaN });
   } else {
     releaseWakeLock();
+    voice.silence();
     // Back on the map: show where the AR tracking left the user
     if (lastArState && lastArState.position && campus) {
       const p = lastArState.position;
       const place = placeAt(p.level, p.x, p.y);
       setCurrentPosition({ level: p.level, x: p.x, y: p.y, name: place ? place.name : 'Position AR', placeId: null, source: 'ar' });
     }
+    reloadIfUpdatePending();
   }
 }
 
@@ -826,10 +896,6 @@ function updateARControls(isActive) {
 // ===========================================================================
 
 const arHudElement = $('ar-hud');
-const arInstructionElement = $('ar-instruction');
-const arInstructionText = $('ar-instruction-text');
-const arInstructionSub = $('ar-instruction-sub');
-const arTurnIcon = $('ar-turn-icon');
 const arMinimap = $('ar-minimap');
 const arCalibrationElement = $('ar-calibration');
 const arLiftButton = $('btn-ar-lift');
@@ -853,31 +919,34 @@ function updateArHud(state) {
   const { position } = state;
   const place = placeAt(position.level, position.x, position.y);
 
-  if (state.arrived) {
-    arInstructionText.textContent = '🎉 Vous êtes arrivé';
-    arInstructionSub.textContent = currentDestinationId ? campus.getPlace(currentDestinationId).name : '';
-  } else if (state.awaitingLift) {
-    arInstructionText.textContent = `Prenez l’ascenseur jusqu’${state.awaitingLift.toLevel === 0 ? 'au rez-de-chaussée' : `à l’étage ${state.awaitingLift.toLevel}`}`;
-    arInstructionSub.textContent = 'À la sortie, touchez « Je suis sorti de l’ascenseur ».';
-  } else if (state.instruction) {
-    arInstructionText.textContent = state.offRoute ? 'Hors itinéraire — recalcul…' : state.instruction.text;
-    arInstructionSub.textContent = [
-      state.remaining !== undefined ? `${Math.round(state.remaining)} m restants` : null,
-      levelLabel(position.level),
-      place ? place.name : null
-    ].filter(Boolean).join(' · ');
+  if (state.awaitingLift) {
+    renderNavCard(arCard, {
+      card: { distance: '', text: `Prenez l’ascenseur jusqu’${state.awaitingLift.toLevel === 0 ? 'au rez-de-chaussée' : `à l’étage ${state.awaitingLift.toLevel}`}`, icon: 'lift' },
+      sub: 'À la sortie, touchez « Je suis sorti de l’ascenseur ».',
+      remaining: state.remaining
+    });
+  } else {
+    renderNavCard(arCard, {
+      card: formatInstruction(state.instruction, { arrived: state.arrived, offRoute: state.offRoute }),
+      sub: state.arrived
+        ? (currentDestinationId ? campus.getPlace(currentDestinationId).name : '')
+        : [state.remaining !== undefined ? formatRemaining(state.remaining, WALKING_SPEED) : null, levelLabel(position.level), place ? place.name : null].filter(Boolean).join(' · '),
+      remaining: state.remaining,
+      arrived: state.arrived,
+      offRoute: state.offRoute
+    });
   }
-  arInstructionElement.classList.toggle('is-off-route', Boolean(state.offRoute));
-  arInstructionElement.classList.toggle('is-arrived', Boolean(state.arrived));
-  // The arrow turns with the user: direction of the route relative to the phone
-  if (state.relativeTurn !== undefined) arTurnIcon.style.transform = `rotate(${state.relativeTurn}deg)`;
+  announce(state);
   arLiftButton.hidden = !state.awaitingLift;
 
   const calibration = state.calibration;
   const source = calibration.source === 'map' ? 'calée sur les murs' : calibration.source === 'manual' ? 'alignement manuel' : 'boussole';
-  arCalibrationElement.textContent = `Position ${source} · confiance ${Math.round(calibration.confidence * 100)} %`;
+  const floorText = state.floor === 'detected' ? 'sol détecté' : state.floor === 'estimated' ? 'sol estimé' : 'recherche du sol…';
+  // Grey guide arrow = position not reliable yet: say how to fix it
+  const arrowHint = state.guideArrow === 'calibrating' ? 'Calibrage… marchez quelques mètres (flèche grise) · ' : '';
+  arCalibrationElement.textContent = `${arrowHint}Position ${source} · confiance ${Math.round(calibration.confidence * 100)} % · ${floorText}`;
 
-  drawMiniMap(state);
+  drawMiniMap(state, arMinimap);
 
   // Nearby places for "Je suis à…" (refreshed every ~2 s)
   if (performance.now() - arLandmarkRefresh > 2000) {
@@ -896,9 +965,9 @@ function updateArHud(state) {
 }
 
 /** Heading-up mini-map of the real walls around the user (Canvas 2D). */
-function drawMiniMap(state) {
-  const context = arMinimap.getContext('2d');
-  const size = arMinimap.width;
+function drawMiniMap(state, canvas) {
+  const context = canvas.getContext('2d');
+  const size = canvas.width;
   const scale = size / 2 / 18; // 18 m radius
   const { x, y, level } = state.position;
   context.clearRect(0, 0, size, size);
@@ -996,15 +1065,31 @@ function describeArError(error) {
 function arUnavailableMessage() {
   switch (arStatus.reason) {
     case 'webgpu-binding':
-      return 'AR WebGPU : activez chrome://flags/#webxr-webgpu-binding dans Chrome Android, puis relancez Chrome. Itinéraire affiché en 3D.';
+      return 'AR WebGPU : activez chrome://flags/#webxr-webgpu-binding dans Chrome Android, puis relancez Chrome. Itinéraire affiché en 3D. Touchez le badge AR pour le diagnostic.';
     case 'webgpu':
-      return 'WebGPU indisponible sur ce téléphone : AR impossible. Itinéraire affiché en 3D.';
+      return 'WebGPU indisponible sur ce téléphone : AR impossible. Itinéraire affiché en 3D. Touchez le badge AR pour le diagnostic.';
     case 'immersive-ar':
-      return 'AR non disponible (Chrome Android + Google Play Services for AR requis). Itinéraire affiché en 3D.';
+      return 'AR non disponible (Chrome Android + Google Play Services for AR requis). Itinéraire affiché en 3D. Touchez le badge AR pour le diagnostic.';
     case 'webxr':
       return 'WebXR non disponible sur ce navigateur. Itinéraire affiché en 3D.';
     default:
       return 'Vérification de l’AR en cours…';
+  }
+}
+
+/**
+ * startGuidance
+ * -------------
+ * The single "Démarrer le guidage" button: immersive AR when supported,
+ * otherwise the camera mode (compass + step counter). Called synchronously
+ * from the tap so the AR session request keeps the user activation.
+ */
+function startGuidance() {
+  if (arGuide && arGuide.isActive) { arGuide.stop(); return; }
+  if (arGuide && arStatus.supported) {
+    startARGuide();
+  } else {
+    startCameraGuide();
   }
 }
 
@@ -1047,7 +1132,9 @@ async function startARGuide() {
       showStatusToast(`AR : configuration simplifiée prête — touchez à nouveau « Guidage AR ». (cause : ${error.name}: ${error.message})`, 15000);
       return;
     }
-    showStatusToast(describeArError(error), 15000);
+    // AR refused on this phone: continue with the camera mode
+    showStatusToast(`${describeArError(error)} — mode caméra lancé.`, 8000);
+    startCameraGuide();
   }
 }
 
@@ -1059,7 +1146,172 @@ function updateArBadge() {
     : 'AR : non disponible';
   arSupportBadgeElement.textContent = text;
   arSupportBadgeElement.classList.toggle('is-ready', arStatus.supported);
-  if (startArLabelElement) startArLabelElement.textContent = arStatus.supported ? 'Guidage AR' : 'Voir en 3D';
+  // One "Démarrer le guidage" button: AR when the phone supports it, otherwise
+  // the camera mode. With AR available, "Mode caméra" stays as an option.
+  if (startArLabelElement) startArLabelElement.textContent = 'Démarrer le guidage';
+  if (startModeChipElement) startModeChipElement.textContent = arStatus.supported ? 'AR' : 'Caméra';
+  if (startCameraButton) startCameraButton.hidden = !arStatus.supported;
+}
+
+// ===========================================================================
+// Camera guidance mode: camera image + 3D arrow (compass + step counter)
+// ===========================================================================
+
+const startCameraButton = $('btn-start-camera');
+const cameraMinimap = $('camera-guide-minimap');
+
+// ===========================================================================
+// Guidance card + voice, shared by the AR and camera modes
+// ===========================================================================
+
+/** Card elements of each guidance screen. */
+const arCard = {
+  root: $('ar-instruction'), icon: $('ar-turn-icon'), distance: $('ar-instruction-distance'),
+  text: $('ar-instruction-text'), sub: $('ar-instruction-sub'), progress: $('ar-progress')
+};
+const cameraCard = {
+  root: $('camera-guide-instruction'), icon: $('camera-guide-icon'), distance: $('camera-guide-distance'),
+  text: $('camera-guide-text'), sub: $('camera-guide-sub'), progress: $('camera-guide-progress')
+};
+const voice = new Voice();
+const voiceAnnouncer = new VoiceAnnouncer();
+
+/**
+ * renderNavCard
+ * -------------
+ * Fills a guidance card: turn icon, big distance, action, progress, details.
+ */
+function renderNavCard(card, { card: info, sub, remaining, arrived = false, offRoute = false }) {
+  card.icon.setAttribute('d', TURN_ICONS[info.icon] || TURN_ICONS.straight);
+  card.distance.textContent = info.distance;
+  card.text.textContent = info.text;
+  card.sub.textContent = sub || '';
+  const total = currentRoute && currentRoute.distance ? currentRoute.distance : 0;
+  const done = arrived ? 1 : total > 0 && Number.isFinite(remaining) ? Math.min(1, Math.max(0, 1 - remaining / total)) : 0;
+  card.progress.style.width = `${Math.round(done * 100)}%`;
+  card.root.classList.toggle('is-arrived', Boolean(arrived));
+  card.root.classList.toggle('is-off-route', Boolean(offRoute));
+}
+
+/** Speaks / vibrates the announcements decided by VoiceAnnouncer. */
+function announce(state) {
+  const said = voiceAnnouncer.next(state, performance.now());
+  if (!said) return;
+  voice.speak(said.text);
+  if (said.vibrate && !state.arrived && 'vibrate' in navigator) {
+    try { navigator.vibrate(150); } catch (error) { /* not supported */ }
+  }
+}
+
+/** Syncs every 🔊/🔇 button with the voice setting. */
+function updateVoiceButtons() {
+  document.querySelectorAll('[data-voice-toggle]').forEach((button) => {
+    button.hidden = !voice.supported;
+    button.setAttribute('aria-pressed', String(voice.enabled));
+    button.setAttribute('aria-label', voice.enabled ? 'Couper le guidage vocal' : 'Activer le guidage vocal');
+  });
+}
+const cameraGuideElement = $('camera-guide');
+const cameraGuideHint = $('camera-guide-hint');
+const cameraFloorButton = $('btn-camera-floor');
+const cameraRescanButton = $('btn-camera-rescan');
+const cameraQuitButton = $('btn-camera-quit');
+/** @type {CameraGuide|null} */
+let cameraGuide = null;
+let resumeCameraAfterScan = false;
+
+/**
+ * startCameraGuide
+ * ----------------
+ * Opens the camera mode for the current route (after a QR scan or a chosen
+ * start). Works without ARCore and without the WebXR/WebGPU flag.
+ */
+async function startCameraGuide() {
+  if (!currentRoute || !currentRoute.found || !currentPosition) {
+    showStatusToast('Scannez un QR code et choisissez une destination', 3500);
+    return;
+  }
+  if (arGuide && arGuide.isActive) arGuide.stop();
+  if (!cameraGuide) {
+    cameraGuide = new CameraGuide({
+      root: cameraGuideElement,
+      video: $('camera-guide-video'),
+      canvasHost: $('camera-guide-canvas'),
+      compass,
+      onState: updateCameraHud,
+      onArrive: handleArArrival
+    });
+  }
+  if (cameraGuide.isActive) return;
+  renderNavCard(cameraCard, { card: { distance: '', text: 'Ouverture de la caméra…', icon: 'straight' }, sub: 'Tenez le téléphone devant vous', remaining: NaN });
+  cameraFloorButton.hidden = true;
+  cameraGuideHint.hidden = true;
+  try {
+    // The 3D campus view pauses: one WebGPU scene at a time on the phone
+    if (view) view.setActive(false);
+    voiceAnnouncer.reset();
+    await cameraGuide.start(currentRoute);
+    document.body.classList.add('is-camera-guide');
+    requestWakeLock();
+  } catch (error) {
+    if (view) view.setActive(true);
+    console.warn('[main] Camera guide failed:', error);
+    const message = error && error.message === 'webgpu'
+      ? 'WebGPU indisponible : la flèche 3D ne peut pas être affichée.'
+      : error && error.name === 'NotAllowedError'
+        ? 'Caméra refusée : autorisez la caméra pour ce site dans Chrome.'
+        : `Caméra indisponible (${error && error.name ? error.name : 'erreur'}).`;
+    showStatusToast(message, 6000);
+  }
+}
+
+/**
+ * stopCameraGuide
+ * ---------------
+ * Back to the map, at the position reached by the step counter.
+ */
+function stopCameraGuide() {
+  if (!cameraGuide || !cameraGuide.isActive) return;
+  const state = cameraGuide.state;
+  cameraGuide.stop();
+  voice.silence();
+  document.body.classList.remove('is-camera-guide');
+  releaseWakeLock();
+  if (view) view.setActive(true);
+  if (state && state.position && campus && state.steps > 0) {
+    const p = state.position;
+    const place = placeAt(p.level, p.x, p.y);
+    setCurrentPosition({ level: p.level, x: p.x, y: p.y, name: place ? place.name : 'Position estimée', placeId: null, source: 'camera' });
+  }
+  reloadIfUpdatePending();
+}
+
+/**
+ * updateCameraHud
+ * ---------------
+ * Observer of CameraGuide (≈ 5 Hz): instruction, distance, floor, hints.
+ */
+function updateCameraHud(state) {
+  const place = campus ? placeAt(state.position.level, state.position.x, state.position.y) : null;
+  renderNavCard(cameraCard, {
+    card: formatInstruction(state.instruction, { arrived: state.arrived }),
+    sub: state.arrived
+      ? (currentDestinationId ? campus.getPlace(currentDestinationId).name : '')
+      : [formatRemaining(state.remaining, WALKING_SPEED), levelLabel(state.position.level), place ? place.name : null].filter(Boolean).join(' · '),
+    remaining: state.remaining,
+    arrived: state.arrived
+  });
+  drawMiniMap({ ...state, bearing: state.heading !== null && state.heading !== undefined ? state.heading : state.targetBearing }, cameraMinimap);
+  announce(state);
+  cameraFloorButton.hidden = !state.awaitingFloorChange;
+  if (state.awaitingFloorChange) cameraFloorButton.textContent = `Je suis ${state.nextLevel === 0 ? 'au rez-de-chaussée' : `à l’étage ${state.nextLevel}`}`;
+
+  let hint = '';
+  if (!state.hasCompass) hint = 'Pas de boussole : clavier ↑ avancer · ↓ reculer · ← → tourner';
+  else if (!state.compassReliable) hint = 'Boussole perturbée : faites un 8 avec le téléphone';
+  else if (!state.motionSensor) hint = 'Capteur de pas indisponible';
+  cameraGuideHint.textContent = hint;
+  cameraGuideHint.hidden = !hint;
 }
 
 async function requestWakeLock() {
@@ -1081,7 +1333,17 @@ function releaseWakeLock() {
 
 function initUIEventListeners() {
   scanTriggerButton.addEventListener('click', openScanOverlay);
-  closeScanButton.addEventListener('click', closeScanOverlay);
+  closeScanButton.addEventListener('click', () => { resumeCameraAfterScan = false; closeScanOverlay(); });
+  $('btn-scan-retry').addEventListener('click', () => {
+    qrScanner.stop();
+    startScanCamera();
+  });
+  $('btn-scan-pick-start').addEventListener('click', () => {
+    resumeCameraAfterScan = false;
+    closeScanOverlay();
+    openDestinationSheet();
+    if (startSelectElement) startSelectElement.focus();
+  });
   destinationTriggerButton.addEventListener('click', openDestinationSheet);
   closeDestinationButton.addEventListener('click', closeDestinationSheet);
   sheetBackdropElement.addEventListener('click', closeDestinationSheet);
@@ -1124,7 +1386,40 @@ function initUIEventListeners() {
   rescanButton.addEventListener('click', openScanOverlay);
   rescanRouteButton.addEventListener('click', openScanOverlay);
   closeRouteButton.addEventListener('click', () => { hideRoutePanel(); destinationTriggerButton.focus(); });
-  startArButton.addEventListener('click', startARGuide);
+  // The map leaves exactly the height of the bottom bar (buttons, chip, steps)
+  const bottomBar = document.querySelector('.bottom-bar-container');
+  if (bottomBar && 'ResizeObserver' in window) {
+    new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--bottom-ui-height', `${Math.ceil(bottomBar.getBoundingClientRect().height)}px`);
+    }).observe(bottomBar);
+  }
+  document.querySelectorAll('[data-journey]').forEach((button) => button.addEventListener('click', () => {
+    const action = button.dataset.journey;
+    if (action === 'scan') openScanOverlay();
+    else if (action === 'destination') openDestinationSheet();
+    else if (currentRoute && currentRoute.found && currentPosition) startGuidance();
+    else showStatusToast(currentPosition ? 'Choisissez d’abord une destination' : 'Scannez d’abord un QR code', 3000);
+  }));
+  // Synchronous dispatch: the AR session request must stay inside the tap
+  startArButton.addEventListener('click', startGuidance);
+  startCameraButton.addEventListener('click', startCameraGuide);
+  cameraQuitButton.addEventListener('click', () => stopCameraGuide());
+  document.querySelectorAll('[data-voice-toggle]').forEach((button) => button.addEventListener('click', () => {
+    if (voice.toggle()) voice.speak('Guidage vocal activé');
+    updateVoiceButtons();
+  }));
+  updateVoiceButtons();
+  cameraRescanButton.addEventListener('click', () => {
+    stopCameraGuide();
+    resumeCameraAfterScan = true;
+    openScanOverlay();
+  });
+  cameraFloorButton.addEventListener('click', () => {
+    if (cameraGuide && cameraGuide.nextLeg()) showStatusToast('Étage suivant : continuez à suivre la flèche', 3000);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && cameraGuide && cameraGuide.isActive) stopCameraGuide();
+  });
   stopArButton.addEventListener('click', () => arGuide && arGuide.stop());
   arQuitButton.addEventListener('click', () => arGuide && arGuide.stop());
   arAlignButton.addEventListener('click', () => {
@@ -1231,15 +1526,33 @@ function updateNetworkStatus() {
 // PWA
 // ===========================================================================
 
+/** True while AR or camera guidance runs: an update must not interrupt it. */
+function isGuiding() {
+  return Boolean((arGuide && arGuide.isActive) || (cameraGuide && cameraGuide.isActive));
+}
+
+/** Update downloaded during guidance: reload when the guidance ends. */
+let reloadWhenIdle = false;
+
+function reloadIfUpdatePending() {
+  if (reloadWhenIdle && !isGuiding()) window.location.reload();
+}
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   const hadController = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
   // Reload once when a NEW worker takes over an already-controlled page, so
-  // the HTML and the cached modules come from the same deployment.
+  // the HTML and the cached modules come from the same deployment. Never on
+  // a first visit, and never in the middle of a guidance.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController || refreshing) return;
     refreshing = true;
+    if (isGuiding()) {
+      reloadWhenIdle = true;
+      showStatusToast('Nouvelle version téléchargée : elle s’appliquera à la fin du guidage', 4000);
+      return;
+    }
     window.location.reload();
   });
   window.addEventListener('load', () => {
@@ -1325,7 +1638,7 @@ async function init() {
   if (params.get('depart')) setCurrentPlace(params.get('depart'), 'qr');
   if (params.get('destination')) selectDestination(params.get('destination'));
   // Field tests: ?debug exposes the live AR tracking state in the console
-  if (params.has('debug')) window.__iwDebug = { get arState() { return lastArState; }, campus, router };
+  if (params.has('debug')) window.__iwDebug = { get arState() { return lastArState; }, campus, router, view };
 
   console.log(`[Indoor Wayfinder] v${APP_VERSION} – SUP'COM campus, ${campus.getPlaces().length} places, renderer WebGPU: ${Boolean(view)}`);
 }

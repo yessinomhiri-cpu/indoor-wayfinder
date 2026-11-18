@@ -5,8 +5,8 @@
   Team         : SUP'COM SIA – Indoor Wayfinder
   Authors      : Amin, Yassine, Oussema
   Created      : 2026-11-04
-  Modified     : 2026-11-12
-  Version      : 3.1.0 (SUP'COM campus – WebGPU 3D, multi-floor routes, compass, GPS, WebXR)
+  Modified     : 2026-11-18
+  Version      : 3.5.0 (guidance UI, voice, journey bar; camera mode; guide arrow; diagnostic AR WebGPU; SUP'COM campus – WebGPU 3D, multi-floor routes, compass, GPS, WebXR)
   Description  : Mobile-first shell for the Indoor Wayfinder PWA. Features
                  a cohesive dark glassmorphism design system, accessible
                  dialogs with focus trapping, compact header with connectivity
@@ -178,7 +178,8 @@
       display: flex;
       flex-direction: column;
       padding-top: calc(94px + env(safe-area-inset-top, 0px));
-      padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+      /* Real height of the bottom bar (buttons + chip + steps), set by main.js */
+      padding-bottom: var(--bottom-ui-height, calc(104px + env(safe-area-inset-bottom, 0px)));
       background: radial-gradient(circle at 50% 18%, #101c36 0%, #070913 62%);
     }
 
@@ -232,6 +233,7 @@
       font-size: 10px;
       font-weight: 600;
       color: var(--color-text-secondary);
+      text-decoration: none;
     }
 
     .ar-support-badge.is-ready {
@@ -477,6 +479,55 @@
     }
 
     /* QR image fallback, useful on desktop without a camera */
+    /* Camera problem on the scan screen (reason + fix + actions) */
+    .scan-error {
+      margin: 0 auto 12px;
+      max-width: 360px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(127, 29, 29, 0.55);
+      border: 1px solid rgba(248, 113, 113, 0.7);
+      text-align: left;
+    }
+
+    .scan-error[hidden] {
+      display: none;
+    }
+
+    .scan-error-title {
+      display: block;
+      font-size: 16px;
+      color: #ffffff;
+    }
+
+    .scan-error-text {
+      margin: 6px 0 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #fee2e2;
+    }
+
+    .scan-error-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .scan-error-actions .action-btn {
+      flex: 1;
+      min-height: 44px;
+      font-size: 14px;
+    }
+
+    /* No camera image: stop pretending to scan */
+    .scan-overlay.has-camera-error .scan-sweep-line,
+    .scan-overlay.has-camera-error .scan-guidance-secondary {
+      display: none;
+    }
+
+    .scan-overlay.has-camera-error .scan-viewfinder {
+      opacity: 0.35;
+    }
+
     .qr-upload-btn {
       display: inline-flex;
       align-items: center;
@@ -651,6 +702,149 @@
 
     .ar-hud[hidden] {
       display: none;
+    }
+
+    /* ==========================================================================
+       Guidance card (AR + camera), "Google Maps" style: icon, big distance,
+       action, progress bar, remaining distance
+       ========================================================================== */
+    .nav-card {
+      pointer-events: auto;
+      border-radius: 20px;
+      background: rgba(4, 18, 31, 0.9);
+      border: 1px solid rgba(0, 210, 255, 0.35);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+
+    .nav-card-main {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 14px 10px 16px;
+    }
+
+    .nav-turn {
+      flex-shrink: 0;
+      width: 62px;
+      height: 62px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #1a73e8 0%, #0b57d0 100%);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .nav-turn svg {
+      width: 40px;
+      height: 40px;
+    }
+
+    .nav-card-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .nav-distance {
+      font-size: 30px;
+      font-weight: 800;
+      line-height: 1.05;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-distance:empty {
+      display: none;
+    }
+
+    .nav-text {
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.25;
+      color: #e2e8f0;
+    }
+
+    .nav-distance:empty + .nav-text {
+      font-size: 21px;
+      color: #ffffff;
+    }
+
+    .nav-progress {
+      height: 4px;
+      margin: 0 16px;
+      border-radius: 2px;
+      background: rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+    }
+
+    .nav-progress-bar {
+      width: 0%;
+      height: 100%;
+      background: #00d2ff;
+      transition: width 300ms ease-out;
+    }
+
+    .nav-sub {
+      padding: 7px 16px 12px;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    .nav-card.is-arrived .nav-turn {
+      background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+    }
+
+    .nav-card.is-arrived .nav-progress-bar {
+      background: #22c55e;
+    }
+
+    .nav-card.is-off-route .nav-turn {
+      background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
+    }
+
+    .nav-card.is-off-route {
+      border-color: rgba(245, 158, 11, 0.8);
+    }
+
+    .voice-toggle {
+      flex-shrink: 0;
+      align-self: flex-start;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(15, 23, 42, 0.6);
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .voice-toggle svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .voice-toggle .voice-off,
+    .voice-toggle[aria-pressed="false"] .voice-on {
+      display: none;
+    }
+
+    .voice-toggle[aria-pressed="false"] .voice-off {
+      display: inline;
+    }
+
+    .voice-toggle[hidden] {
+      display: none;
+    }
+
+    .camera-guide-minimap {
+      align-self: flex-end;
+      width: 110px;
+      height: 110px;
+      margin-left: 0;
     }
 
     .ar-instruction {
@@ -1018,6 +1212,193 @@
 
     .route-actions #btn-rescan-route {
       flex: 1;
+    }
+
+    .route-actions #btn-start-camera {
+      flex: 1.1;
+    }
+
+    .route-actions #btn-start-ar {
+      flex-wrap: wrap;
+      gap: 4px 8px;
+    }
+
+    /* Which guidance the single button will start (AR or camera) */
+    /* 3-step journey bar (above the bottom buttons) */
+    .journey-steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin: 0 auto 8px;
+      padding: 0;
+      list-style: none;
+      pointer-events: auto;
+    }
+
+    /* The route panel shows step 3 itself ("Démarrer le guidage") */
+    body.has-route-panel .journey-steps {
+      display: none;
+    }
+
+    .journey-steps li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .journey-steps li + li::before {
+      content: '';
+      width: 14px;
+      height: 2px;
+      border-radius: 1px;
+      background: rgba(148, 163, 184, 0.35);
+    }
+
+    .journey-steps button {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 32px;
+      padding: 4px 10px 4px 4px;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(7, 9, 19, 0.78);
+      color: var(--color-text-secondary);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .journey-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(148, 163, 184, 0.2);
+      color: #e2e8f0;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .journey-steps li.is-current button {
+      border-color: rgba(0, 210, 255, 0.7);
+      color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.15);
+    }
+
+    .journey-steps li.is-current .journey-num {
+      background: var(--color-accent-primary);
+      color: var(--color-text-inverse);
+    }
+
+    .journey-steps li.is-done .journey-num {
+      background: var(--color-success);
+      color: #ffffff;
+      font-size: 0;
+    }
+
+    .journey-steps li.is-done .journey-num::after {
+      content: '✓';
+      font-size: 13px;
+    }
+
+    .journey-steps li.is-done + li::before {
+      background: var(--color-success);
+    }
+
+    .btn-mode-chip {
+      padding: 1px 7px;
+      border-radius: var(--radius-full);
+      background: rgba(5, 14, 31, 0.22);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    /* ==========================================================================
+       Camera guidance mode (src/camera-guide.js): camera image + 3D arrow
+       ========================================================================== */
+    .camera-guide {
+      position: fixed;
+      inset: 0;
+      z-index: 140;
+      background: #000;
+    }
+
+    .camera-guide[hidden] {
+      display: none;
+    }
+
+    .camera-guide-video,
+    .camera-guide-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .camera-guide-video {
+      object-fit: cover;
+    }
+
+    .camera-guide-canvas canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .camera-guide-hud {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: calc(var(--space-md) + env(safe-area-inset-top, 0px)) var(--space-md) calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+      pointer-events: none;
+    }
+
+    .camera-guide-bottom {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      pointer-events: auto;
+    }
+
+    .camera-guide-actions {
+      display: flex;
+      gap: var(--space-sm);
+    }
+
+    .camera-guide-actions .action-btn {
+      flex: 1;
+      min-height: 48px;
+    }
+
+    .camera-guide-floor {
+      min-height: 48px;
+      font-size: var(--font-size-md);
+    }
+
+    .camera-guide-floor[hidden],
+    .camera-guide-hint[hidden] {
+      display: none;
+    }
+
+    .camera-guide-hint {
+      align-self: center;
+      margin-top: 8px;
+      margin-bottom: auto;
+      padding: 6px 12px;
+      border-radius: var(--radius-full);
+      background: rgba(4, 18, 31, 0.78);
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-xs);
+      text-align: center;
     }
 
     .route-actions .action-btn[hidden] {
@@ -1605,7 +1986,7 @@
         <h1 class="map-title">SUP'COM</h1>
       </div>
       <div class="map-topline-actions">
-        <span id="ar-support-badge" class="ar-support-badge">AR : vérification…</span>
+        <a id="ar-support-badge" class="ar-support-badge" href="diagnostic.html" title="Diagnostic AR WebGPU">AR : vérification…</a>
         <button id="btn-compass" class="compass is-off" type="button" aria-label="Activer la boussole">
           <span id="compass-rose" class="compass-rose" aria-hidden="true">
             <span class="c-n">N</span><span class="c-e">E</span><span class="c-s">S</span><span class="c-o">O</span>
@@ -1680,14 +2061,25 @@
 
     <!-- Live AR guidance HUD (visible inside the immersive-ar session) -->
     <section id="ar-hud" class="ar-hud" aria-live="polite" hidden>
-      <div id="ar-instruction" class="ar-instruction">
-        <div class="ar-turn" aria-hidden="true">
-          <svg id="ar-turn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 20 20 12 15.5 4 20Z"/></svg>
+      <div id="ar-instruction" class="nav-card">
+        <div class="nav-card-main">
+          <div class="nav-turn" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path id="ar-turn-icon" d="M12 20V5M6 11l6-6 6 6"></path></svg>
+          </div>
+          <div class="nav-card-text">
+            <div id="ar-instruction-distance" class="nav-distance"></div>
+            <div id="ar-instruction-text" class="nav-text">Initialisation du suivi…</div>
+          </div>
+          <button class="voice-toggle" type="button" data-voice-toggle aria-pressed="true" aria-label="Guidage vocal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M11 5 6 9H2v6h4l5 4z"></path>
+              <path class="voice-on" d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path>
+              <path class="voice-off" d="m22 9-6 6M16 9l6 6"></path>
+            </svg>
+          </button>
         </div>
-        <div>
-          <div id="ar-instruction-text" class="ar-instruction-text">Initialisation du suivi…</div>
-          <div id="ar-instruction-sub" class="ar-instruction-sub">Visez le sol et marchez lentement</div>
-        </div>
+        <div class="nav-progress" aria-hidden="true"><div id="ar-progress" class="nav-progress-bar"></div></div>
+        <div id="ar-instruction-sub" class="nav-sub">Visez le sol et marchez lentement</div>
       </div>
       <div class="ar-bottom">
         <canvas id="ar-minimap" class="ar-minimap" width="264" height="264" aria-label="Mini-carte orientée"></canvas>
@@ -1741,11 +2133,17 @@
       <div class="route-actions">
         <button id="btn-start-ar" class="action-btn btn-action-primary" type="button">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 2 3 7v10l9 5 9-5V7l-9-5z"></path>
-            <path d="M3 7l9 5 9-5"></path>
-            <path d="M12 12v10"></path>
+            <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
           </svg>
-          <span id="btn-start-ar-label">Guidage AR</span>
+          <span id="btn-start-ar-label">Démarrer le guidage</span>
+          <span id="btn-start-ar-mode" class="btn-mode-chip">Caméra</span>
+        </button>
+        <button id="btn-start-camera" class="action-btn btn-action-secondary" type="button" hidden aria-label="Mode caméra : flèche 3D sur l'image de la caméra, sans AR">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <span>Mode caméra</span>
         </button>
         <button id="btn-rescan-route" class="action-btn btn-action-secondary" type="button">
           <span>Scanner</span>
@@ -1758,6 +2156,12 @@
 
     <!-- Floating Glass Action Bar -->
     <div class="bottom-bar-container">
+      <!-- 3-step journey: 1 Scanner, 2 Destination, 3 Guidage -->
+      <ol id="journey-steps" class="journey-steps" aria-label="Étapes du guidage">
+        <li data-journey-step="1" class="is-current"><button type="button" data-journey="scan"><span class="journey-num" aria-hidden="true">1</span><span>Scanner</span></button></li>
+        <li data-journey-step="2"><button type="button" data-journey="destination"><span class="journey-num" aria-hidden="true">2</span><span>Destination</span></button></li>
+        <li data-journey-step="3"><button type="button" data-journey="guide"><span class="journey-num" aria-hidden="true">3</span><span>Guidage</span></button></li>
+      </ol>
       <div id="position-chip" class="position-chip" hidden>
         <span class="position-dot" aria-hidden="true"></span>
         <span>Vous êtes ici : <strong id="position-label">—</strong></span>
@@ -1789,6 +2193,43 @@
   </div>
 
   <!-- ==================== Mockup Screen 1: Scan Overlay ==================== -->
+  <!-- ==================== Camera guidance mode (src/camera-guide.js) ==================== -->
+  <section id="camera-guide" class="camera-guide" aria-label="Guidage caméra" hidden>
+    <video id="camera-guide-video" class="camera-guide-video" playsinline muted autoplay></video>
+    <div id="camera-guide-canvas" class="camera-guide-canvas" aria-hidden="true"></div>
+    <div class="camera-guide-hud">
+      <div id="camera-guide-instruction" class="nav-card" aria-live="polite">
+        <div class="nav-card-main">
+          <div class="nav-turn" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path id="camera-guide-icon" d="M12 20V5M6 11l6-6 6 6"></path></svg>
+          </div>
+          <div class="nav-card-text">
+            <div id="camera-guide-distance" class="nav-distance"></div>
+            <div id="camera-guide-text" class="nav-text">Ouverture de la caméra…</div>
+          </div>
+          <button class="voice-toggle" type="button" data-voice-toggle aria-pressed="true" aria-label="Guidage vocal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M11 5 6 9H2v6h4l5 4z"></path>
+              <path class="voice-on" d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path>
+              <path class="voice-off" d="m22 9-6 6M16 9l6 6"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="nav-progress" aria-hidden="true"><div id="camera-guide-progress" class="nav-progress-bar"></div></div>
+        <div id="camera-guide-sub" class="nav-sub">Tenez le téléphone devant vous</div>
+      </div>
+      <div id="camera-guide-hint" class="camera-guide-hint" hidden></div>
+      <div class="camera-guide-bottom">
+        <canvas id="camera-guide-minimap" class="ar-minimap camera-guide-minimap" width="220" height="220" aria-label="Mini-carte orientée"></canvas>
+        <button id="btn-camera-floor" class="tool-btn camera-guide-floor" type="button" hidden>Je suis à l’étage</button>
+        <div class="camera-guide-actions">
+          <button id="btn-camera-rescan" class="action-btn btn-action-secondary" type="button">Rescanner</button>
+          <button id="btn-camera-quit" class="action-btn btn-action-primary" type="button">Quitter</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <div id="scan-overlay" class="scan-overlay" role="dialog" aria-modal="true" aria-labelledby="scan-title" aria-hidden="true" inert>
     <!-- Camera video element (mirrors feed) -->
     <video id="scan-video" playsinline muted autoplay style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1;"></video>
@@ -1817,6 +2258,15 @@
       <div class="scan-guidance">
         <p class="scan-guidance-primary">Scannez le QR code le plus proche</p>
         <p class="scan-guidance-secondary">Cadrez un repère mural pour calibrer votre position intérieure et synchroniser le graphe AR.</p>
+        <!-- Shown when the camera cannot start: the reason and the fix -->
+        <div id="scan-error" class="scan-error" role="alert" hidden>
+          <strong id="scan-error-title" class="scan-error-title">Caméra indisponible</strong>
+          <p id="scan-error-text" class="scan-error-text"></p>
+          <div class="scan-error-actions">
+            <button id="btn-scan-retry" class="action-btn btn-action-primary" type="button">Réessayer</button>
+            <button id="btn-scan-pick-start" class="action-btn btn-action-secondary" type="button">Choisir mon départ</button>
+          </div>
+        </div>
         <label class="qr-upload-btn">
           <input id="qr-file-input" type="file" accept="image/*" />
           <span>Importer une image QR</span>

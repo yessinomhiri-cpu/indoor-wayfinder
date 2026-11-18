@@ -1,10 +1,10 @@
 {
   "name": "indoor-wayfinder",
-  "version": "3.1.0",
+  "version": "3.5.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/test-navigation.mjs scripts/test-guidance.mjs",
+    "test": "node --test scripts/test-navigation.mjs scripts/test-guidance.mjs scripts/test-diagnostic.mjs scripts/test-camera-guide.mjs scripts/test-scanner.mjs",
     "serve": "python -m http.server 8000"
   }
 }

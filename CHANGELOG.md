@@ -3,6 +3,225 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.5.1] - 2026-11-18
+
+### Fixed
+
+- **QR scan on the phone: black screen, nothing read, no explanation.** When
+  the camera could not start (permission blocked, camera used by another
+  app…), the scan screen stayed dark with the sweep line still moving, and
+  the error message was drawn UNDER the scan screen. The scan screen now
+  shows the reason and the fix (« Caméra bloquée pour ce site » → cadenas →
+  Autorisations → Caméra, or Android settings; « Caméra occupée »; « Aucune
+  caméra trouvée »; « La caméra ne renvoie pas d'image » after 4 s), with
+  **Réessayer** and **Choisir mon départ** buttons.
+- The scanner kept only « Accès à la caméra refusé » for every failure; the
+  real reason (`NotAllowedError`, `NotReadableError`…) is now kept.
+- Phones that refuse the preferred camera settings: the scanner retries with
+  simpler ones (rear camera, then any camera).
+- Without the native BarcodeDetector, the camera waited for jsQR to download
+  before opening; it now opens immediately and jsQR loads in parallel.
+
+### Verified
+
+- Chrome with a fake camera showing a real QR card: read, « Vous êtes ici :
+  Entrée principale ». Refused camera → « Caméra bloquée pour ce site » on
+  the scan screen. Busy camera → « Caméra occupée ». Strict camera → second
+  settings accepted, QR read. 3 new Node tests (64).
+
+## [3.5.0] - 2026-11-18
+
+**Design pass: one guidance button, voice, 3-step bar, Google Maps-style
+guidance card, arrow polish, lighter 3D map. Plus a real bug fix.**
+
+### Fixed
+
+- **The page reloaded by itself ~10 s after the first visit.** On activation
+  the service worker called `client.navigate()` on every open tab: a first
+  visitor saw the app reload in the middle of a QR scan, and after each
+  deploy open tabs reloaded even during AR / camera guidance. The worker now
+  only claims the page; after an update the page reloads once, and waits for
+  the end of the guidance if one is running. (This was also the "3D view
+  freeze" wrongly reported in 3.2.0.)
+
+### Added
+
+- **One « Démarrer le guidage » button** with a chip saying which mode it
+  starts: AR when the phone supports it, otherwise the camera mode. If the
+  AR session is refused, the camera mode starts instead. « Mode caméra »
+  stays available as an option when AR exists.
+- **Voice guidance** (`src/voice.js`, Web Speech API, fr-FR) for AR and
+  camera modes: first instruction, each turn ~12 m before (« Dans 10 mètres,
+  tournez à gauche ») and ~3 m before (« Tournez à gauche ») with a
+  vibration, stairs / lift once, « Faites demi-tour » at most every 8 s,
+  arrival once. 🔊/🔇 button, remembered on the phone.
+- **3-step bar** ① Scanner ② Destination ③ Guidage above the bottom
+  buttons: ✓ when done, the next step highlighted, tap to open it.
+- **Google Maps-style guidance card** (`src/nav-format.js`) in both modes:
+  turn icon (straight, left, right, slight, U-turn, stairs, lift, arrival),
+  distance in large type, short action, progress bar, « 42 m restants ·
+  ≈ 1 min · floor · place ». The camera mode also gets the wall mini-map.
+- **Guide arrow polish:** soft shadow under it, leans into the turn, pop-in
+  animation, colour changes fade.
+- 7 Node tests (voice on real walks, the card formatter); 61 in total.
+
+### Changed
+
+- **3D map frame budget** (`view3d.js`): full speed while touched or moving,
+  30 fps for the route animation, 4 fps when nothing moves. Measured in
+  Chrome: idle map with a route 720 → 144 frames in 5 s; idle map without a
+  route 720 → 20 frames in 5 s. Hidden room labels are no longer drawn
+  (125 → 54 draw calls zoomed out).
+- The map leaves exactly the height of the bottom bar (no more hint text
+  under the buttons).
+- Cache bumped to `v3.5.0`.
+
+### Verified
+
+- Full app in headless Chrome (WebGPU, service worker on): home screen with
+  the 3-step bar; route panel with the single button; camera guidance with
+  the new card, mini-map and polished arrow (keyboard walk, 45° turn).
+
+### Not covered
+
+- Room names (item 7 of the design plan) need the survey at SUP'COM.
+
+## [3.4.0] - 2026-11-18
+
+**Camera mode: the camera image with a 3D arrow, on any Android phone.**
+
+### Added
+
+- **Caméra** button in the route panel (after the QR scan and the choice of
+  destination). The rear camera fills the screen like the photo app, and a
+  transparent WebGPU canvas draws the big 3D guide arrow on top of it.
+  No ARCore and no `chrome://flags` needed.
+- `src/camera-guide.js` (`CameraGuide`): camera stream, WebGPU overlay, the
+  compass turns the arrow towards the route relative to the phone, the
+  phone tilt pitches the virtual camera, the accelerometer counts steps.
+- `src/route-follower.js`: `StepDetector` (peak detection on the
+  acceleration norm, ≤ 3 steps/s) and `RouteFollower` (each step moves the
+  user 0.7 m along the route: forward when facing the route, backward when
+  facing away, no move when looking sideways; waits on the stairs until
+  « Je suis à l'étage N »). Same French instructions as the AR mode.
+- HUD: instruction, metres left, floor, step count; **Rescanner** reopens
+  the camera mode automatically after the new QR scan; **Quitter** puts the
+  position reached on the map.
+- Desktop test without a compass: keyboard ↑ step, ↓ step back, ← → turn.
+- `scripts/test-camera-guide.mjs`: 11 Node tests (step counting on simulated
+  walks and shaking, the Entrée → Amphi IBN KHALDOUN walk with a ±15°
+  compass, backward / sideways steps, stairs to the 3rd floor, instructions).
+
+### Changed
+
+- The 3D campus view pauses during the camera mode (one WebGPU scene at a
+  time on the phone).
+- Cache bumped to `v3.4.0`; `npm test` runs 54 tests.
+
+### Verified
+
+- Chrome with a fake webcam: `CameraGuide` on the real SUP'COM route; the
+  camera image is visible through the transparent WebGPU canvas; 10 steps
+  = 7 m; turning right 90° → « Tournez-vous vers la gauche »; 76 steps →
+  « Vous êtes arrivé », green arrow.
+
+## [3.3.0] - 2026-11-18
+
+**Floating guide arrow ("Live View" style).**
+
+### Added
+
+- A big 3D arrow (≈ 64 cm, blue with a white rim) floats 2 m in front of the
+  user at chest height (45 cm under the phone), follows them as they walk and
+  always points along the route (bearing to the route point 4 m ahead).
+  Position and direction are smoothed (120 ms / 180 ms) so it neither shakes
+  with the hand nor snaps at corners; it turns the short way round.
+- Colours: **blue** follow · **grey, half transparent** while the position is
+  not reliable yet (confidence < 50 %, the HUD says « Calibrage… marchez
+  quelques mètres ») · **orange** off route · **green, pointing down and
+  bouncing** at arrival.
+- Drawn without depth test, so walls and occluders never hide it; the floor
+  chevrons and the tap-to-place arrow are kept.
+- 3 Node tests: colour modes, angle smoothing, and a simulated walk (unknown
+  AR yaw, compass off by 12°) where the blue arrow stays within 25° of the
+  true route direction and turns blue within the first 15 m.
+
+### Changed
+
+- Cache bumped to `v3.3.0`; `npm test` runs 43 tests.
+
+### Verified
+
+- The four arrow states rendered with Three.js r187 `WebGPURenderer` in Chrome
+  (corridor scene, camera at phone height).
+
+## [3.2.1] - 2026-11-17
+
+### Changed
+
+- Cache bumped to `v3.2.1` so phones that cached 3.2.0 download the floor
+  fallback (`ar.js`, `ar-guidance.js`).
+
+## [3.2.0] - 2026-11-17
+
+**Demo-phone readiness for WebGPU AR.** WebGPU stays the only renderer
+(supervisor requirement); this release makes it checkable on the phone.
+
+### Added
+
+- `diagnostic.html` + `src/diagnostic.js`: checks HTTPS, Chrome Android,
+  `xrCompatible` WebGPU adapter, GPU device (test render), WebXR,
+  `immersive-ar` (ARCore), `XRGPUBinding` (`chrome://flags/#webxr-webgpu-binding`),
+  camera permission, BarcodeDetector, compass, Wake Lock, vibration, Service
+  Worker and offline cache, with a French fix for every failure and a verdict.
+- Live tests: rear camera + QR read, compass rate, and a **real 20 s
+  `immersive-ar` + `webgpu` session** rendered through `XRGPUBinding` with raw
+  WebGPU (start time, FPS, p95 frame time, stutters, tracking %, time to
+  floor, anchor). Plain-text report to copy into the test log.
+- `docs/demo-phone-setup.md`: one-time phone setup, live test targets,
+  defence-day checklist and test log.
+- `scripts/test-diagnostic.mjs`: 9 Node tests for the verdict logic.
+- **Fixed-distance arrow fallback** (cahier risk "Hit Testing instable"):
+  `FloorEstimator` (`src/ar-guidance.js`) tracks the floor as *searching*,
+  *detected* (median of ARCore hits) or *estimated* (no floor after 3 s:
+  1.45 m under the phone, smoothed over 1.2 s). A tap with no floor places the
+  arrow 1.5 m ahead on the estimated floor, anchored with
+  `XRFrame.createAnchor` when available. One status message when the floor
+  state changes; the HUD shows « sol détecté / estimé ».
+- 6 Node tests for the floor fallback and the fixed-distance arrow.
+
+### Changed
+
+- The **AR : …** badge links to the diagnostic; "AR unavailable" messages
+  point to it.
+- Cache bumped to `v3.2.0` (diagnostic precached); `npm test` runs 40 tests.
+
+### Fixed
+
+- Without an ARCore floor hit, the chevrons followed the hand (floor = phone
+  height − 1.45 m every frame); the estimate is now smoothed.
+- A tap without a floor hit did nothing; it now places the arrow at 1.5 m.
+- After a storey change, old floor hits outvoted the new floor for up to 8
+  hits; they are now dropped when they no longer match the phone height.
+- A new tap now deletes the previous `XRAnchor` instead of leaking it.
+
+### Known issue (corrected in 3.5.0)
+
+- ~~The 3D campus view freezes headless Chrome.~~ Wrong diagnosis: the
+  cause was the service worker forcing a reload of every open tab when it
+  activated (see 3.5.0, Fixed).
+
+### Verified
+
+- Desktop Chrome (real clock, phone viewport): every check completes, the
+  verdict lists ARCore and the flag as the two blockers.
+- After opening the app twice: Service Worker in control, the 5 critical
+  files cached (6.9 MB).
+- Simulated ARCore device whose `XRGPUBinding` returns real GPU textures:
+  floor found → "AR WebGPU fonctionnelle"; no floor → warning; flag off →
+  AR test disabled with the flag card; session refused → flag fix shown.
+  No WebGPU validation errors.
+
 ## [3.1.0] - 2026-11-12
 
 **Real turn-by-turn AR guidance.** The AR mode now knows where the user is at

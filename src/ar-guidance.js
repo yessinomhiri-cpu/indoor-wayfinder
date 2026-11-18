@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
- * Modified     : 2026-11-12
- * Version      : 3.1.0 (live AR guidance)
+ * Modified     : 2026-11-18
+ * Version      : 3.3.0 (live AR guidance, floor fallback, guide arrow logic)
  * Description  : Real-time localization and turn-by-turn guidance during an
  *                immersive-ar session. Pure logic (no rendering):
  *                - Frame alignment: the QR scan fixes the start point; ARCore
@@ -645,4 +645,183 @@ function upcomingManoeuvres(leg, s, distance) {
     if (at > s && at <= s + distance) out.push({ at, point: points[points.length - 1], kind: leg.exit.kind, label: leg.exit.name });
   }
   return out;
+}
+
+// =============================================================================
+// Floor height: ARCore hit tests, or a fixed-height fallback (cahier des
+// charges, risk "Hit Testing instable" → arrow at a fixed distance)
+// =============================================================================
+
+/** Floor states shown to the user. */
+export const FLOOR_SOURCE = Object.freeze({
+  SEARCHING: 'searching', // session just started, no floor yet
+  DETECTED: 'detected',   // median of recent ARCore floor hits
+  ESTIMATED: 'estimated'  // no floor after the delay: fixed height under the phone
+});
+
+/**
+ * FloorEstimator
+ * --------------
+ * Gives the floor height (AR world Y) used to lay the guidance on the floor.
+ * - Floor hits between 0.7 m and 2.4 m under the phone are kept; their
+ *   median is the detected floor while it stays within 1.2 m of the
+ *   expected height (otherwise the user changed floor on the stairs).
+ * - Without a usable hit, the floor is `cameraHeight` under the phone,
+ *   smoothed over ~1.2 s: the chevrons no longer bob with the hand, but
+ *   still follow the stairs.
+ * - After `fallbackAfterMs` without a floor, the source becomes ESTIMATED
+ *   (the UI tells the user, and a tap places the arrow at a fixed distance).
+ */
+export class FloorEstimator {
+  /**
+   * @param {Object} [options]
+   * @param {number} [options.cameraHeight=1.45] – Phone height above the floor (m).
+   * @param {number} [options.fallbackAfterMs=3000] – Delay before ESTIMATED.
+   * @param {number} [options.smoothingMs=1200] – Time constant of the estimate.
+   */
+  constructor({ cameraHeight = 1.45, fallbackAfterMs = 3000, smoothingMs = 1200 } = {}) {
+    this.cameraHeight = cameraHeight;
+    this.fallbackAfterMs = fallbackAfterMs;
+    this.smoothingMs = smoothingMs;
+    this.reset();
+  }
+
+  /** Forget everything (new session). */
+  reset() {
+    this.hits = [];
+    this.detectedY = null;
+    this.estimatedY = null;
+    this.startTime = null;
+    this.lastTime = null;
+    this.y = null;
+    this.source = FLOOR_SOURCE.SEARCHING;
+  }
+
+  /**
+   * addHit
+   * ------
+   * @param {number} hitY – Y of a hit-test result.
+   * @param {number} cameraY – Y of the phone.
+   * @returns {boolean} True when the hit was accepted as floor.
+   */
+  addHit(hitY, cameraY) {
+    if (!(hitY < cameraY - 0.7 && hitY > cameraY - 2.4)) return false;
+    this.hits.push(hitY);
+    if (this.hits.length > 15) this.hits.shift();
+    const sorted = [...this.hits].sort((a, b) => a - b);
+    const middle = sorted.length >> 1;
+    this.detectedY = sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    return true;
+  }
+
+  /**
+   * update
+   * ------
+   * @param {number} cameraY – Y of the phone.
+   * @param {number} time – Frame time (ms).
+   * @returns {{y:number, source:string, changed:boolean}} Floor to use now;
+   *          `changed` is true on the frame the source changes.
+   */
+  update(cameraY, time) {
+    if (this.startTime === null) this.startTime = time;
+    const target = cameraY - this.cameraHeight;
+    if (this.estimatedY === null || this.lastTime === null) {
+      this.estimatedY = target;
+    } else {
+      const dt = Math.max(0, time - this.lastTime);
+      this.estimatedY += (target - this.estimatedY) * (1 - Math.exp(-dt / this.smoothingMs));
+    }
+    this.lastTime = time;
+
+    const previous = this.source;
+    if (this.detectedY !== null && Math.abs(this.detectedY - target) >= 1.2) {
+      // Storey change: the old floor hits must not outvote the new floor
+      this.hits = [];
+      this.detectedY = null;
+    }
+    if (this.detectedY !== null) {
+      this.y = this.detectedY;
+      this.source = FLOOR_SOURCE.DETECTED;
+    } else {
+      this.y = this.estimatedY;
+      this.source = time - this.startTime < this.fallbackAfterMs && previous === FLOOR_SOURCE.SEARCHING
+        ? FLOOR_SOURCE.SEARCHING
+        : FLOOR_SOURCE.ESTIMATED;
+    }
+    return { y: this.y, source: this.source, changed: this.source !== previous };
+  }
+}
+
+/**
+ * fixedArrowPoint
+ * ---------------
+ * Point on the floor `distance` metres in front of the phone, used when no
+ * floor hit is available. `yaw` follows ARGuide: atan2(forward.x, -forward.z).
+ *
+ * @param {{position:{x:number,y:number,z:number}, yaw:number}} camera
+ * @param {number} distance – Metres ahead.
+ * @param {number} floorY – Floor height.
+ * @returns {{x:number, y:number, z:number}}
+ */
+export function fixedArrowPoint(camera, distance, floorY) {
+  return {
+    x: camera.position.x + Math.sin(camera.yaw) * distance,
+    y: floorY,
+    z: camera.position.z - Math.cos(camera.yaw) * distance
+  };
+}
+
+// =============================================================================
+// Floating guide arrow ("Live View" style): stays in front of the user at
+// chest height and points along the route
+// =============================================================================
+
+/** Placement of the floating guide arrow. */
+export const GUIDE_ARROW = Object.freeze({
+  DISTANCE: 2.0,       // m in front of the phone
+  DROP: 0.45,          // m below the phone (chest height)
+  MIN_CONFIDENCE: 0.5, // below this the arrow is grey ("Calibrage…")
+  POSITION_TAU_MS: 120,
+  YAW_TAU_MS: 180
+});
+
+/** Arrow modes: colour and behaviour. */
+export const GUIDE_MODE = Object.freeze({
+  CALIBRATING: 'calibrating', // grey: position not reliable yet
+  GUIDE: 'guide',             // blue: follow it
+  OFF_ROUTE: 'offroute',      // orange: back to the route
+  ARRIVED: 'arrived'          // green, points down
+});
+
+/**
+ * guideArrowMode
+ * --------------
+ * @param {Object} state – ARGuidance.update() result.
+ * @returns {string} GUIDE_MODE value.
+ */
+export function guideArrowMode(state) {
+  if (state.arrived) return GUIDE_MODE.ARRIVED;
+  const calibration = state.calibration || { source: 'none', confidence: 0 };
+  if (calibration.source !== 'manual' && calibration.confidence < GUIDE_ARROW.MIN_CONFIDENCE) return GUIDE_MODE.CALIBRATING;
+  if (state.offRoute) return GUIDE_MODE.OFF_ROUTE;
+  return GUIDE_MODE.GUIDE;
+}
+
+/**
+ * smoothAngle
+ * -----------
+ * Exponential smoothing of an angle (radians) along the shortest way round.
+ *
+ * @param {number} current – Current angle.
+ * @param {number} target – Target angle.
+ * @param {number} dtMs – Elapsed time.
+ * @param {number} tauMs – Time constant.
+ * @returns {number} New angle in ]−π, π].
+ */
+export function smoothAngle(current, target, dtMs, tauMs) {
+  let delta = (target - current) % (2 * Math.PI);
+  if (delta > Math.PI) delta -= 2 * Math.PI;
+  if (delta <= -Math.PI) delta += 2 * Math.PI;
+  const next = current + delta * (1 - Math.exp(-Math.max(0, dtMs) / tauMs));
+  return Math.atan2(Math.sin(next), Math.cos(next));
 }

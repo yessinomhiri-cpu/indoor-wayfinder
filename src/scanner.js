@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-11
- * Version      : 2.2.2 (Sprint 2/3 – QR camera reader)
+ * Modified     : 2026-11-18
+ * Version      : 3.5.1 (QR camera reader, camera retries, explained errors)
  * Description  : Reads QR codes from the device camera. Uses the native
  *                BarcodeDetector API when available (Chrome Android 83+),
  *                and falls back to the jsQR library loaded from jsDelivr.
@@ -42,6 +42,89 @@ async function loadJsQR() {
   } catch (error) {
     console.error('[scanner] Failed to load jsQR:', error);
     throw new Error('Cannot load QR scanner library');
+  }
+}
+
+// ===========================================================================
+// Camera start: settings to try, and what to tell the user when it fails
+// ===========================================================================
+
+/** getUserMedia settings, from preferred to most permissive. */
+const CAMERA_ATTEMPTS = [
+  { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+  { video: { facingMode: { ideal: 'environment' } }, audio: false },
+  { video: true, audio: false }
+];
+
+/**
+ * cameraError
+ * -----------
+ * @param {string} name – DOMException name of the failure.
+ * @param {*} cause – Original error.
+ * @returns {Error} Error whose `name` keeps the reason (shown to the user).
+ */
+function cameraError(name, cause) {
+  const error = new Error(describeCameraError(name).title);
+  error.name = name || 'Error';
+  error.cause = cause;
+  return error;
+}
+
+/**
+ * describeCameraError
+ * -------------------
+ * What went wrong with the camera, and how to fix it on an Android phone.
+ *
+ * @param {string} name – Error name (getUserMedia DOMException, or
+ *   'PlaybackError' / 'NoFrames' from the scanner).
+ * @returns {{title:string, text:string}} French message for the scan screen.
+ */
+export function describeCameraError(name) {
+  switch (name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+    case 'SecurityError':
+      return {
+        title: 'Caméra bloquée pour ce site',
+        text: 'Touchez le cadenas 🔒 à gauche de l’adresse → Autorisations → Caméra → Autoriser, puis « Réessayer ». '
+          + 'Si rien ne change : Paramètres Android → Applications → Chrome → Autorisations → Appareil photo → Autoriser.'
+      };
+    case 'NotReadableError':
+    case 'TrackStartError':
+    case 'AbortError':
+      return {
+        title: 'Caméra occupée',
+        text: 'Une autre application ou un autre onglet utilise la caméra (appareil photo, appel vidéo…). Fermez-le, puis « Réessayer ».'
+      };
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+    case 'OverconstrainedError':
+      return {
+        title: 'Aucune caméra trouvée',
+        text: 'Importez une image du QR code, ou choisissez votre point de départ dans la liste.'
+      };
+    case 'NotSupportedError':
+    case 'TypeError':
+      return {
+        title: 'Caméra indisponible dans ce navigateur',
+        text: 'Ouvrez le lien de l’application en HTTPS dans Google Chrome.'
+      };
+    case 'DecoderError':
+      return {
+        title: 'Lecteur de QR non chargé',
+        text: 'Connectez-vous à Internet une fois pour charger le lecteur, puis « Réessayer ». En attendant, choisissez votre départ dans la liste.'
+      };
+    case 'NoFrames':
+    case 'PlaybackError':
+      return {
+        title: 'La caméra ne renvoie pas d’image',
+        text: 'Fermez les autres applications qui utilisent la caméra, puis « Réessayer ». Sinon, fermez et rouvrez Chrome.'
+      };
+    default:
+      return {
+        title: 'Caméra indisponible',
+        text: `Réessayez, ou importez une image du QR code${name ? ` (${name})` : ''}.`
+      };
   }
 }
 
@@ -244,27 +327,32 @@ export class QrScanner {
     await this.#backendReady;
     if (generation !== this.#startGeneration) return;
 
-    // Load jsQR if we need the fallback
-    if (this.#useJsQrFallback) {
-      await loadJsQR();
-    }
-    if (generation !== this.#startGeneration) return;
+    // Load jsQR (if needed) WHILE the camera opens: on a slow network the
+    // preview must not stay black until the library is downloaded.
+    let decoderError = null;
+    const decoderReady = this.#useJsQrFallback
+      ? loadJsQR().catch((error) => { decoderError = error; })
+      : Promise.resolve();
 
-    // Request camera access (prefer rear camera)
-    let stream = null;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment',  // rear camera on mobile
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      });
-    } catch (error) {
-      console.error('[scanner] Camera access denied:', error);
-      throw new Error('Accès à la caméra refusé');
+    // Request camera access (prefer rear camera). Some phones refuse the
+    // preferred settings: retry with simpler ones, except when the user or
+    // the browser blocked the camera (retrying would not help).
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw cameraError('NotSupportedError', null);
     }
+    let stream = null;
+    let lastError = null;
+    for (const constraints of CAMERA_ATTEMPTS) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (error) {
+        lastError = error;
+        console.warn('[scanner] getUserMedia failed:', error && error.name, error && error.message);
+        if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) break;
+      }
+    }
+    if (!stream) throw cameraError(lastError && lastError.name, lastError);
 
     // The overlay may have been closed while the permission prompt was open
     if (generation !== this.#startGeneration) {
@@ -280,9 +368,20 @@ export class QrScanner {
     } catch (error) {
       console.error('[scanner] Video playback failed:', error);
       this.#releaseMediaStream();
-      throw new Error('Lecture de la caméra impossible');
+      throw cameraError('PlaybackError', error);
     }
 
+    if (generation !== this.#startGeneration) {
+      this.#releaseMediaStream();
+      return;
+    }
+
+    // The preview is visible; now the decoder must be ready to read QR codes
+    await decoderReady;
+    if (decoderError) {
+      this.#releaseMediaStream();
+      throw cameraError('DecoderError', decoderError);
+    }
     if (generation !== this.#startGeneration) {
       this.#releaseMediaStream();
       return;

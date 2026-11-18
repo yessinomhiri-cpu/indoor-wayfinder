@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
- * Modified     : 2026-11-12
- * Version      : 3.0.0 (SUP'COM campus in 3D, WebGPU)
+ * Modified     : 2026-11-18
+ * Version      : 3.5.0 (SUP'COM campus in 3D, WebGPU, frame budget)
  * Description  : Real-time WebGPU view of the SUP'COM campus generated from
  *                assets/campus/supcom.json: the main building with its four
  *                floors (walls, doors, stairs, lifts from the SUP'COM plans),
@@ -735,18 +735,47 @@ export class CampusView3D {
     this.camera.lookAt(this.target);
   }
 
+  /**
+   * #frameInterval
+   * --------------
+   * Frame budget (battery): full speed while the user touches the map or the
+   * camera moves, 30 fps for the route / beacon animations, 4 fps when
+   * nothing moves (any missed change still shows within 250 ms).
+   *
+   * @returns {number} Minimum ms between two rendered frames.
+   */
+  #frameInterval() {
+    const camera = this.camera;
+    const last = this.lastRenderedPose;
+    const moving = !last
+      || camera.position.distanceToSquared(last.position) > 1e-4 // 1 cm: the easing never stops exactly
+      || 1 - Math.abs(camera.quaternion.dot(last.quaternion)) > 1e-7;
+    if (this.pointers.size > 0 || moving) return 0;
+    const animated = !this.reducedMotion.matches && (this.chevrons.length > 0 || this.pulses.length > 0 || this.beaconPin);
+    return animated ? 1000 / 30 : 250;
+  }
+
   #renderFrame() {
     this.timer.update();
     const delta = Math.min(this.timer.getDelta(), 0.1);
     const elapsed = this.timer.getElapsed();
     this.#updateCamera(delta);
+
+    const now = performance.now();
+    if (now - (this.lastRenderTime || 0) < this.#frameInterval() - 2) return;
+    this.lastRenderTime = now;
+    if (!this.lastRenderedPose) this.lastRenderedPose = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+    this.lastRenderedPose.position.copy(this.camera.position);
+    this.lastRenderedPose.quaternion.copy(this.camera.quaternion);
+
     this.#updateChevrons(elapsed);
 
-    // Room codes only when close enough to read them
+    // Room codes only when close enough to read them (hidden = not drawn)
     const close = this.distance < 90;
     for (const label of this.labelSprites) {
       if (label.official) continue;
-      label.sprite.material.opacity = close ? 0.95 : 0;
+      label.sprite.visible = close;
+      label.sprite.material.opacity = 0.95;
     }
 
     if (!this.reducedMotion.matches) {

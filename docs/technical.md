@@ -36,12 +36,14 @@ indoor-wayfinder/
 ├── index.html               UI, import map (three@0.187.0 webgpu), styles
 ├── manifest.json            PWA
 ├── sw.js                    cache hors ligne
+├── diagnostic.html          diagnostic AR WebGPU du téléphone de démo
 ├── src/
 │   ├── main.js              NavigationService : contrôleur, état, UI
 │   ├── navigation.js        CampusMap, CampusRouter (Dijkstra), stratégies, étapes
 │   ├── view3d.js            CampusView3D : campus 3D WebGPU
 │   ├── ar.js                ARGuide : immersive-ar sur WebGPU, flèche, chevrons
 │   ├── gpu.js               détection WebGPU, fabrique WebGPURenderer
+│   ├── diagnostic.js        vérification de la chaîne AR WebGPU + test AR réel
 │   ├── geo.js               Compass, GpsTracker
 │   ├── survey.js            SurveyStore (mode relevé)
 │   └── scanner.js           QR caméra / image
@@ -50,7 +52,9 @@ indoor-wayfinder/
 │   └── corrections.json     passages et noms relevés sur place
 ├── scripts/
 │   ├── build-campus.mjs     import ArcGIS SUP'COM + OpenStreetMap
-│   └── test-navigation.mjs  tests Node
+│   ├── test-navigation.mjs  tests Node : campus, routage, boussole
+│   ├── test-guidance.mjs    tests Node : marches AR simulées
+│   └── test-diagnostic.mjs  tests Node : verdict du diagnostic
 └── docs/                    documentation, QR codes
 ```
 
@@ -170,6 +174,59 @@ et `chrome://flags/#webxr-webgpu-binding` → *Enabled*, puis redémarrer Chrome
 La liaison WebXR/WebGPU n'est pas encore activée par défaut dans Chrome
 (Chrome Platform Status, fonctionnalité 5077077997649920).
 
+**Sol non détecté (risque « Hit Testing instable »).** `FloorEstimator`
+(`ar-guidance.js`) donne la hauteur du sol : médiane des derniers impacts
+ARCore situés 0,7 à 2,4 m sous le téléphone (*détecté*) ; sinon 1,45 m sous
+le téléphone, lissé sur 1,2 s pour ne pas suivre les mouvements de la main
+mais suivre les escaliers (*estimé*, annoncé après 3 s). Les impacts d'un
+ancien étage sont oubliés dès qu'ils ne correspondent plus à la hauteur du
+téléphone. Un toucher sans impact pose la flèche à 1,5 m devant le téléphone
+(`fixedArrowPoint`), ancrée par `XRFrame.createAnchor` si disponible.
+
+**Flèche de guidage flottante.** `ARGuide.#updateGuideArrow` place une
+grande flèche 2 m devant le téléphone, 45 cm plus bas (`fixedArrowPoint`),
+orientée vers le point de l'itinéraire situé 4 m plus loin
+(`state.targetBearing` → `directionOfBearing`). Position et cap sont lissés
+(constantes de temps 120 / 180 ms, `smoothAngle` par le plus court chemin).
+`guideArrowMode` choisit la couleur : grise si confiance < 50 % (hors
+alignement manuel), orange hors trajet, verte à l'arrivée, bleue sinon. Elle
+est dessinée sans test de profondeur pour ne jamais être masquée par les murs.
+
+### 7.1 Mode Caméra (sans ARCore)
+
+`CameraGuide` (`camera-guide.js`) : flux `getUserMedia` (caméra arrière) en
+plein écran, canvas WebGPU transparent par-dessus (`createWebGPURenderer({
+alpha: true })`) avec la même flèche (`createGuideArrow`). Lacet de la flèche
+= `targetBearing − cap boussole` ; tangage de la caméra virtuelle = `beta −
+90°` (inclinaison du téléphone). `RouteFollower` (`route-follower.js`) fait
+du *pedestrian dead reckoning* contraint à l'itinéraire : `StepDetector`
+détecte les pas sur la norme de `accelerationIncludingGravity` (moyenne lente
+1 s, rapide 50 ms, seuil 1,2 m/s², ≥ 320 ms entre deux pas) ; chaque pas
+avance de 0,7 m si le téléphone fait face au trajet (< 70°), recule au-delà de
+110°, sinon ne bouge pas. Changement d'étage confirmé par l'utilisateur.
+Sans boussole (ordinateur + webcam), le clavier simule la marche.
+
+### 7.2 Interface de guidage et voix
+
+`nav-format.js` découpe l'instruction (« Dans 6 m, tournez à gauche » →
+« 6 m » + « Tournez à gauche » + icône). `voice.js` : `VoiceAnnouncer`
+(pur, testé) décide quoi dire et quand (12 m puis 3 m avant chaque virage,
+escalier une fois, demi-tour au plus toutes les 8 s, arrivée une fois) ;
+`Voice` parle via `speechSynthesis` (fr-FR), préférence en `localStorage`.
+
+### 7.3 Budget d'images de la vue 3D
+
+`CampusView3D.#frameInterval` : pleine vitesse si l'utilisateur touche la
+carte ou si la caméra bouge (> 1 cm), 30 images/s pour les animations de
+l'itinéraire, 4 images/s sinon. Mesuré : 720 → 144 images en 5 s (carte
+immobile avec itinéraire), 720 → 20 (sans itinéraire).
+
+### 7.4 Service Worker
+
+`activate` ne recharge plus les onglets (`client.navigate` supprimé) : la
+page se recharge une seule fois après une mise à jour, et attend la fin
+d'un guidage en cours (`registerServiceWorker` dans `main.js`).
+
 ## 8. Boussole et GPS
 
 - `Compass` : `deviceorientationabsolute` (Android) ou `webkitCompassHeading`
@@ -196,9 +253,20 @@ Lien direct : `?depart=ID&destination=ID`.
 ## 11. Vérifications
 
 ```bash
-node --test scripts/test-navigation.mjs     # 13 tests campus / routage / boussole
+npm test                                    # 34 tests : routage, marches AR simulées, diagnostic
 python -m http.server 8000                  # puis http://localhost:8000
 ```
+
+**Sur le téléphone de démo :** `diagnostic.html` (badge **AR : …** de
+l'application) vérifie HTTPS, Chrome Android, adaptateur WebGPU
+`xrCompatible`, device GPU (rendu de test), WebXR, `immersive-ar` (ARCore),
+`XRGPUBinding` (flag), caméra, BarcodeDetector, boussole, Wake Lock,
+vibration, Service Worker et cache hors ligne. Son **test AR réel** ouvre une
+session `immersive-ar` + `webgpu` + `hit-test` comme Three.js r187
+(`XRGPUBinding.createProjectionLayer`, `getViewSubImage` à chaque image, rendu
+WebGPU brut) pendant 20 s et mesure démarrage, img/s, saccades, suivi, délai
+de détection du sol et ancre. Procédure complète :
+[demo-phone-setup.md](demo-phone-setup.md).
 
 ## 12. Déploiement
 

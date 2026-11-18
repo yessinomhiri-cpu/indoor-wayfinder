@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<!--
+  ==========================================================================
+  Module       : diagnostic.html
+  Project      : Indoor Wayfinder – AR Indoor Navigation PWA
+  Team         : SUP'COM SIA – Indoor Wayfinder
+  Authors      : Amin, Yassine, Oussema
+  Created      : 2026-11-17
+  Modified     : 2026-11-17
+  Version      : 3.2.0 (WebGPU AR readiness diagnostic)
+  Description  : Demo-phone readiness page. Lists every prerequisite of the
+                 WebGPU AR pipeline with a fix for each failure, and runs
+                 three live tests (camera + QR, compass, real WebGPU AR
+                 session). Logic in src/diagnostic.js.
+  ==========================================================================
+-->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#070913" />
+  <title>Diagnostic AR WebGPU</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png" />
+
+  <!-- ==================== Import Map – jsQR (pinned, same as the app) ==================== -->
+  <script type="importmap">
+  {
+    "imports": {
+      "jsqr": "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm"
+    }
+  }
+  </script>
+
+  <style>
+    /* ==========================================================================
+       1. Tokens (same palette as index.html)
+       ========================================================================== */
+    :root {
+      --color-bg-base: #070913;
+      --color-bg-surface: #0f1424;
+      --color-bg-card: rgba(20, 27, 48, 0.85);
+      --color-border: rgba(255, 255, 255, 0.1);
+      --color-accent: #00d2ff;
+      --color-accent-gradient: linear-gradient(135deg, #00d2ff 0%, #0077ff 100%);
+      --color-success: #10b981;
+      --color-warning: #f59e0b;
+      --color-alert: #ef4444;
+      --color-text: #f8fafc;
+      --color-text-secondary: #94a3b8;
+      --color-text-inverse: #050e1f;
+      --radius: 14px;
+      --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+      color-scheme: dark;
+    }
+
+    /* ==========================================================================
+       2. Layout
+       ========================================================================== */
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--color-bg-base); color: var(--color-text); font-family: var(--font); }
+    body { padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+    main { max-width: 640px; margin: 0 auto; }
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    header h1 { font-size: 1.2rem; margin: 0; flex: 1; }
+    header a { color: var(--color-accent); font-size: 0.9rem; text-decoration: none; }
+    p.intro { color: var(--color-text-secondary); font-size: 0.9rem; line-height: 1.45; margin: 0 0 16px; }
+
+    /* ==========================================================================
+       3. Verdict card
+       ========================================================================== */
+    .diag-summary { border: 1px solid var(--color-border); border-left-width: 5px; border-radius: var(--radius); padding: 14px 16px; background: var(--color-bg-card); margin-bottom: 14px; }
+    .diag-summary h2 { margin: 0; font-size: 1.05rem; }
+    .diag-summary ol { margin: 8px 0 0; padding-left: 20px; font-size: 0.88rem; line-height: 1.45; }
+    .diag-summary.is-ok { border-left-color: var(--color-success); }
+    .diag-summary.is-warn { border-left-color: var(--color-warning); }
+    .diag-summary.is-fail { border-left-color: var(--color-alert); }
+    .diag-summary.is-pending { border-left-color: var(--color-accent); }
+
+    .flag-card { border: 1px solid rgba(239, 68, 68, 0.45); border-radius: var(--radius); padding: 14px 16px; background: rgba(239, 68, 68, 0.1); margin-bottom: 14px; font-size: 0.9rem; line-height: 1.5; }
+    .flag-card code { font-family: var(--font-mono); font-size: 0.82rem; word-break: break-all; }
+    .flag-card ol { margin: 6px 0 10px; padding-left: 20px; }
+
+    /* ==========================================================================
+       4. Buttons
+       ========================================================================== */
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+    button { font: inherit; font-size: 0.9rem; font-weight: 600; border-radius: 999px; padding: 0.65rem 1rem; border: 1px solid var(--color-border); background: var(--color-bg-surface); color: var(--color-text); cursor: pointer; min-height: 44px; }
+    button.primary { background: var(--color-accent-gradient); color: var(--color-text-inverse); border: none; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ==========================================================================
+       5. Check list
+       ========================================================================== */
+    .diag-group { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-secondary); margin: 18px 0 6px; }
+    .diag-row { display: flex; gap: 12px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); margin-bottom: 6px; }
+    .diag-icon { flex: 0 0 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; background: var(--color-bg-surface); color: var(--color-text-secondary); }
+    .is-ok .diag-icon { background: var(--color-success); color: var(--color-text-inverse); }
+    .is-warn .diag-icon { background: var(--color-warning); color: var(--color-text-inverse); }
+    .is-fail .diag-icon { background: var(--color-alert); color: #fff; }
+    .is-pending .diag-icon { color: var(--color-accent); }
+    .diag-body { min-width: 0; flex: 1; }
+    .diag-label { font-weight: 600; font-size: 0.92rem; }
+    .diag-detail { color: var(--color-text-secondary); font-size: 0.82rem; margin-top: 2px; overflow-wrap: anywhere; }
+    .diag-fix { font-size: 0.84rem; margin-top: 4px; color: var(--color-warning); overflow-wrap: anywhere; }
+    .is-fail .diag-fix { color: #fca5a5; }
+
+    /* ==========================================================================
+       6. Camera preview
+       ========================================================================== */
+    .camera-box { position: relative; margin: 8px 0 12px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--color-border); background: #000; }
+    .camera-box video { display: block; width: 100%; max-height: 50vh; object-fit: cover; }
+    .camera-box button { position: absolute; right: 8px; bottom: 8px; }
+
+    /* ==========================================================================
+       7. AR test overlay (dom-overlay root, only shown during the session)
+       ========================================================================== */
+    .ar-test-overlay { display: none; }
+    .ar-test-overlay.is-active { display: flex; position: fixed; inset: 0; flex-direction: column; justify-content: space-between; padding: 24px 16px; pointer-events: none; }
+    .ar-test-live { white-space: pre-line; background: rgba(7, 9, 19, 0.78); border-radius: var(--radius); padding: 12px 14px; font-size: 0.95rem; line-height: 1.5; }
+    .ar-test-overlay button { pointer-events: auto; align-self: center; }
+
+    footer { margin-top: 22px; color: var(--color-text-secondary); font-size: 0.78rem; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main id="diag-root">
+    <!-- ==================== Header ==================== -->
+    <header>
+      <h1>Diagnostic AR WebGPU</h1>
+      <a href="./">← Application</a>
+    </header>
+    <p class="intro">
+      Vérifie sur ce téléphone chaque maillon du guidage AR (WebXR rendu en WebGPU).
+      Corrigez les lignes rouges dans l’ordre, puis lancez le test AR réel.
+      Aucune donnée ne quitte le téléphone.
+    </p>
+
+    <!-- ==================== Verdict ==================== -->
+    <section id="diag-summary" class="diag-summary is-pending" aria-live="polite">
+      <h2 id="diag-summary-title">Vérification en cours…</h2>
+      <ol id="diag-summary-steps"></ol>
+    </section>
+
+    <!-- ==================== Flag help (shown when XRGPUBinding is missing) ==================== -->
+    <section id="flag-card" class="flag-card" hidden>
+      <strong>Activer la liaison WebXR ↔ WebGPU</strong>
+      <ol>
+        <li>Copiez l’adresse ci-dessous et collez-la dans la barre d’adresse de Chrome.</li>
+        <li>« WebXR/WebGPU Bindings » → <strong>Enabled</strong>.</li>
+        <li>Touchez <strong>Relaunch</strong>, puis revenez sur cette page.</li>
+      </ol>
+      <code>chrome://flags/#webxr-webgpu-binding</code><br />
+      <button id="btn-copy-flag" type="button" style="margin-top:8px">Copier l’adresse</button>
+    </section>
+
+    <!-- ==================== Actions ==================== -->
+    <div class="actions">
+      <button id="btn-test-ar" class="primary" type="button" disabled>Lancer le test AR réel (20 s)</button>
+      <button id="btn-test-camera" type="button">Tester caméra + QR</button>
+      <button id="btn-test-compass" type="button">Tester la boussole</button>
+      <button id="btn-rerun" type="button">Relancer</button>
+      <button id="btn-copy-report" type="button">Copier le rapport</button>
+    </div>
+
+    <div id="camera-box" class="camera-box" hidden>
+      <video id="camera-preview" playsinline muted></video>
+      <button id="btn-stop-camera" type="button">Arrêter</button>
+    </div>
+
+    <!-- ==================== Check list ==================== -->
+    <section id="diag-list" aria-label="Résultats du diagnostic"></section>
+
+    <footer>
+      Test AR réel : session <code>immersive-ar</code> avec la fonctionnalité <code>webgpu</code>,
+      couche de projection <code>XRGPUBinding</code> (comme Three.js r187), hit test et ancre.
+      L’écran se teinte en vert quand le sol est détecté.
+    </footer>
+  </main>
+
+  <!-- ==================== AR test overlay (WebXR dom-overlay root) ==================== -->
+  <div id="ar-test-overlay" class="ar-test-overlay">
+    <div id="ar-test-live" class="ar-test-live">Démarrage…</div>
+    <button id="btn-ar-test-stop" class="primary" type="button">Arrêter le test</button>
+  </div>
+
+  <script type="module" src="src/diagnostic.js"></script>
+</body>
+</html>
