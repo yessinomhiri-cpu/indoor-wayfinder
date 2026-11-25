@@ -1,6 +1,6 @@
 # Manuel utilisateur — Indoor Wayfinder
 
-**Version :** 3.5.0
+**Version :** 3.5.1
 **Public :** visiteurs, étudiants, candidats, personnel de SUP'COM
 
 ## Ce dont vous avez besoin

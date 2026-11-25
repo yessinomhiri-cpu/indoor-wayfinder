@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
  * Modified     : 2026-11-18
- * Version      : 3.5.0 (SUP'COM campus in 3D, WebGPU, frame budget)
+ * Version      : 3.5.1 (SUP'COM campus in 3D, WebGPU, frame budget)
  * Description  : Real-time WebGPU view of the SUP'COM campus generated from
  *                assets/campus/supcom.json: the main building with its four
  *                floors (walls, doors, stairs, lifts from the SUP'COM plans),

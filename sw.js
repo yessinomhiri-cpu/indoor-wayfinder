@@ -6,7 +6,7 @@
  * Author       : Oussema Harrabi
  * Created      : 2026-11-05
  * Modified     : 2026-11-18
- * Version      : 3.5.0 (no forced reload; guidance UI; camera mode; guide arrow HUD; diagnostic AR WebGPU; offline shell, SUP'COM campus, Three.js r187 WebGPU)
+ * Version      : 3.5.1 (no forced reload; guidance UI; camera mode; guide arrow HUD; diagnostic AR WebGPU; offline shell, SUP'COM campus, Three.js r187 WebGPU)
  * Description  : Service Worker for the Indoor Wayfinder PWA. Precaches the
  *                app shell, the SUP'COM campus data and the pinned Three.js
  *                WebGPU build, serves navigations

@@ -1,6 +1,6 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 3.0.0 — campus SUP'COM, WebGPU
+**Version :** 3.5.1 — campus SUP'COM, WebGPU, guidage AR et mode caméra
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
@@ -21,7 +21,7 @@ augmentée WebXR orienté par la boussole.
 | Localisation | QR (`getUserMedia` + `BarcodeDetector` / jsQR 1.4.0), GPS extérieur (Geolocation) |
 | Orientation | DeviceOrientation absolu (`deviceorientationabsolute`) |
 | Données | `assets/campus/supcom.json` généré par `scripts/build-campus.mjs` |
-| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.0.0` |
+| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.5.1` |
 | Hébergement | HTTPS (Vercel ; GitHub Pages possible) |
 
 Aucune ligne du code de l'application ne crée de contexte WebGL : `src/gpu.js`
@@ -253,7 +253,7 @@ Lien direct : `?depart=ID&destination=ID`.
 ## 11. Vérifications
 
 ```bash
-npm test                                    # 34 tests : routage, marches AR simulées, diagnostic
+npm test                                    # 64 tests : routage, guidage AR, mode caméra, diagnostic
 python -m http.server 8000                  # puis http://localhost:8000
 ```
 
