@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
  * Modified     : 2026-11-26
- * Version      : 3.7.0 (floor outlines and forecourt for the exterior model)
+ * Version      : 3.9.0 (room regions on the grid; floor outlines and forecourt)
  * Description  : Builds assets/campus/supcom.json from public sources:
  *                - SUP'COM floor plans (RDC, étages 1–3) and labels published
  *                  by SUP'COM on ArcGIS Online (owner SUPCOM_TUN, the data
@@ -547,6 +547,7 @@ async function main() {
   const places = [];
   const connectors = [];
   const gridFloors = [];
+  const gridRooms = [];
   let apron = [];
 
   for (const source of floorSources) {
@@ -691,6 +692,23 @@ async function main() {
       });
     }
 
+    // Room regions on the grid (closed by walls and door symbols): the router
+    // keeps routes out of rooms other than the start and the destination, and
+    // the 3D view tints each room's floor. Values: 1..n → ids[value - 1].
+    const roomMap = new Uint8Array(size);
+    const roomIds = [];
+    const roomIndex = new Map();
+    for (const room of floorRooms) {
+      if (roomIds.length >= 255) break;
+      roomIds.push(room.official ? slug(room.name) : room.id);
+      roomIndex.set(room.region, roomIds.length);
+    }
+    for (let i = 0; i < size; i++) {
+      const index = roomIndex.get(regions.labels[i]);
+      if (index) roomMap[i] = index;
+    }
+    gridRooms.push({ ids: roomIds, runs: runLength(roomMap) });
+
     for (const room of floorRooms) {
       places.push({
         id: room.official ? slug(room.name) : room.id,
@@ -796,7 +814,7 @@ async function main() {
     ],
     blocks: blocks.map((b) => ({ ...b, x: cm(b.x), y: cm(b.y) })),
     floors,
-    grid: { res: GRID_RES, minX: grid.minX, minY: grid.minY, width: grid.width, height: grid.height, floors: gridFloors },
+    grid: { res: GRID_RES, minX: grid.minX, minY: grid.minY, width: grid.width, height: grid.height, floors: gridFloors, rooms: gridRooms },
     connectors,
     places,
     context,
