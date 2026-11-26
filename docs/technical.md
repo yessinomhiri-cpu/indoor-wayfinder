@@ -1,6 +1,6 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 3.6.0 — campus SUP'COM, WebGPU, guidage AR, mode caméra et vue Campus
+**Version :** 3.7.0 — campus SUP'COM, WebGPU, guidage AR, mode caméra et maquette extérieure (vue Campus)
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
@@ -21,7 +21,7 @@ augmentée WebXR orienté par la boussole.
 | Localisation | QR (`getUserMedia` + `BarcodeDetector` / jsQR 1.4.0), GPS extérieur (Geolocation) |
 | Orientation | DeviceOrientation absolu (`deviceorientationabsolute`) |
 | Données | `assets/campus/supcom.json` généré par `scripts/build-campus.mjs` |
-| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.6.0` |
+| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.7.0` |
 | Hébergement | HTTPS : Vercel (actif) ; GitHub Pages (à activer par le propriétaire du dépôt, accès admin requis) |
 
 Aucune ligne du code de l'application ne crée de contexte WebGL : `src/gpu.js`
@@ -40,7 +40,9 @@ indoor-wayfinder/
 ├── src/
 │   ├── main.js              NavigationService : contrôleur, état, UI
 │   ├── navigation.js        CampusMap, CampusRouter (Dijkstra), stratégies, étapes
-│   ├── view3d.js            CampusView3D : campus 3D WebGPU
+│   ├── view3d.js            CampusView3D : campus 3D WebGPU, palettes jour / nuit
+│   ├── exterior.js          CampusExterior : maquette extérieure (vue Campus)
+│   ├── exterior-textures.js textures procédurales de la maquette
 │   ├── ar.js                ARGuide : immersive-ar sur WebGPU, flèche, chevrons
 │   ├── gpu.js               détection WebGPU, fabrique WebGPURenderer
 │   ├── diagnostic.js        vérification de la chaîne AR WebGPU + test AR réel
@@ -125,12 +127,41 @@ alias QR ou point `{ level, x, y }` (toucher sur le plan, GPS).
 intérieures, portes / escaliers / ascenseurs en traits, niveaux espacés de
 3,6 m, bâtiments OSM extrudés. Sélecteur RDC / 1 / 2 / 3 / Tous ; étages
 inférieurs atténués ; vue orbite (glisser, pincer, deux doigts = déplacer)
-ou vue « Plan » nord en haut. Le bouton **Campus** abaisse la caméra et cadre
-le bâtiment, la place, les palmiers et le portail : une vue extérieure
-adaptée du langage visuel du site Forum SUP'COM (tours circulaires, bandeaux
-de fenêtres allumés, couronnes, nuit), sans importer ni copier son modèle.
+ou vue « Plan » nord en haut.
 Itinéraire : tube par niveau, liaison verticale,
 chevrons animés, balise de destination, marqueur de position et cap.
+
+### 6.1 Maquette extérieure (vue Campus)
+
+Le bouton **Campus** affiche `CampusExterior` (`src/exterior.js`), construit
+une fois au démarrage, et passe la scène en palette de jour
+(`#applyEnvironment` : ciel, brouillard, lumières, sol, zones OSM par type) ;
+les étages intérieurs sont masqués. Choisir un étage, un lieu ou un itinéraire
+revient à la vue 3D (`onViewModeChange` met à jour la barre d'outils).
+
+- **Données** : `scripts/build-campus.mjs` écrit `floors[].outline` (marching
+  squares sur l'emprise de chaque étage à 0,5 m, Douglas–Peucker 0,3 m ;
+  anneaux extérieurs anti-horaires, cours intérieures horaires) et
+  `exterior.apron` (emprise du RDC dilatée de 6 m).
+- **Façades** : un prisme par étage (3,6 m). Les arêtes proches de l'axe des
+  deux tours qui encadrent l'entrée sont l'**aile vitrée** (texture
+  mur-rideau, coordonnée u projetée sur l'axe) ; les autres sont des **tours**
+  (texture enduit blanc + vitrage haut, u = angle autour du centre du bloc,
+  nombre entier de baies, donc vitrages alignés d'un étage à l'autre).
+- **Toits** : une arête est un bord de toit si l'étage supérieur ne la couvre
+  pas (test à 2 m vers l'intérieur) : corniche grise inclinée (tours) ou
+  bandeau (aile), décalages en onglet pour rester continus ; poteaux d'acier
+  instanciés tous les 6,5 m sous la corniche des tours.
+- **Entrée** : repère calé sur la façade du RDC devant « Entrée principale »
+  (normale moyenne des arêtes proches) : arche parabolique extrudée, terrasse
+  et marches, trois mâts avec le drapeau tunisien, enseigne « SUP'COM » sur le
+  bandeau du dernier étage, parvis dallé, pelouses.
+- **Paysage** : palmiers et arbres instanciés autour du parvis (hors bâtiments
+  OSM et hors parvis d'entrée), lampadaires, voies OSM en rubans, ciel en
+  dégradé qui suit la caméra, soleil d'après-midi avec ombres (PCF, 2048²),
+  actif seulement dans cette vue.
+- **Textures** : `src/exterior-textures.js`, dessinées sur canvas (aucune
+  image externe). Référence : vidéo officielle SUP'COM (voir `ATTRIBUTION.md`).
 
 ## 7. Réalité augmentée
 
@@ -266,7 +297,7 @@ du lieu, les modules sont entiers pour un décodage fiable. La planche
 git clone https://github.com/yessinomhiri-cpu/indoor-wayfinder.git
 cd indoor-wayfinder
 # aucune dépendance npm : Three.js et jsQR sont chargés depuis le CDN épinglé
-npm test                                    # 64 tests : routage, guidage AR, mode caméra, diagnostic
+npm test                                    # 68 tests : routage, guidage AR, mode caméra, diagnostic, contours extérieurs
 python -m http.server 8000                  # puis http://localhost:8000
 ```
 
