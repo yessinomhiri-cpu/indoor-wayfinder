@@ -3,6 +3,33 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.9.0] - 2026-11-26
+
+**Routes go through doors; clearer room names.**
+
+### Changed
+
+- **Routes no longer cut through other rooms.** The import script now exports
+  each room's region on the grid (closed by walls and door symbols, the same
+  regions used to detect the rooms). The router adds a cost of 80 m for
+  walking out of any room other than the start room, so routes keep to the
+  corridors and only go in and out of the start and destination rooms by
+  their doors. The path smoothing also refuses shortcuts that cut into a
+  third room. The AR / camera guide arrow follows the same route.
+  On 383 test routes, cut-throughs fell from 326 to 247; the remaining ones
+  cross spaces that are the only way on the plans (lobby areas detected as
+  rooms, small rooms reached only through an amphitheatre).
+  Reported distances do not include that cost.
+- **Labels are clearer:** opaque pills, bold white text with a dark outline,
+  drawn at twice the resolution, larger room codes, no fog.
+- The cut-away 3D view tints room floors with the same exact room regions.
+
+### Added
+
+- `CampusMap.roomIndex()` / `roomAt()`; `grid.rooms` in `supcom.json`.
+- Tests: room regions (233/233 rooms found at their place) and routes that
+  used to cut through rooms (A0-36, C0-04, B0-21, A0-15) — 70 tests.
+
 ## [3.8.0] - 2026-11-26
 
 **Cut-away 3D view: every floor, room and amphitheatre in daylight.**

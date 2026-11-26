@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
  * Modified     : 2026-11-26
- * Version      : 3.8.0 (daylight cut-away 3D view of each floor)
+ * Version      : 3.9.0 (clearer labels; daylight cut-away 3D view of each floor)
  * Description  : Real-time WebGPU view of the SUP'COM campus generated from
  *                assets/campus/supcom.json: the main building with its four
  *                floors (walls, doors, stairs, lifts from the SUP'COM plans),
@@ -579,7 +579,7 @@ export class CampusView3D {
         const official = place.official || place.surveyed;
         const isConnector = place.kind === 'stairs' || place.kind === 'lift';
         const text = isConnector ? (place.kind === 'lift' ? '⇅ Ascenseur' : '▤ Escalier') : (official ? place.name : place.code || place.id);
-        const label = createLabelSprite(text, { scale: official ? 2.4 : 1.5, muted: !official, accent: false });
+        const label = createLabelSprite(text, { scale: official ? 2.6 : 1.9, muted: !official, accent: false });
         label.position.copy(toWorld(place.x, place.y, base + (official ? 4.2 : 3.4)));
         labels.add(label);
         this.labelSprites.push({ sprite: label, level: floor.level, official: official && !isConnector });
@@ -907,7 +907,7 @@ export class CampusView3D {
     for (const label of this.labelSprites) {
       if (label.official) continue;
       label.sprite.visible = close;
-      label.sprite.material.opacity = 0.95;
+      label.sprite.material.opacity = 1;
     }
 
     if (!this.reducedMotion.matches) {
@@ -1109,37 +1109,53 @@ function createPulseRing(color) {
   }));
 }
 
-/** Camera-facing text label drawn on a canvas texture. */
-function createLabelSprite(text, { scale = 1.5, accent = false, muted = false, color = '#e2e8f0' } = {}) {
-  const fontSize = 44;
+/**
+ * Camera-facing text label drawn on a canvas texture: opaque pill, white
+ * bold text with a dark outline, drawn at high resolution so it stays sharp
+ * on phones and readable over the daylight model (no fog, no tone mapping).
+ */
+function createLabelSprite(text, { scale = 1.5, accent = false, muted = false, color = '#ffffff' } = {}) {
+  const fontSize = 84;
+  const pad = Math.round(fontSize * 0.55);
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
-  const font = `600 ${fontSize}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  const font = `700 ${fontSize}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
   context.font = font;
-  canvas.width = Math.ceil(context.measureText(text).width) + 52;
-  canvas.height = fontSize + 30;
+  canvas.width = Math.ceil(context.measureText(text).width) + pad * 2;
+  canvas.height = Math.round(fontSize * 1.45);
   context.font = font;
-  context.fillStyle = accent ? 'rgba(0, 150, 200, 0.92)' : muted ? 'rgba(7, 9, 19, 0.6)' : 'rgba(7, 9, 19, 0.82)';
-  context.strokeStyle = accent ? 'rgba(186, 230, 253, 0.95)' : 'rgba(148, 163, 184, 0.45)';
-  context.lineWidth = 3;
-  const r = (canvas.height - 4) / 2;
+  context.fillStyle = accent ? 'rgb(0, 132, 180)' : muted ? 'rgba(30, 41, 59, 0.96)' : 'rgba(8, 15, 35, 0.97)';
+  context.strokeStyle = accent ? 'rgb(186, 230, 253)' : muted ? 'rgba(203, 213, 225, 0.85)' : 'rgba(125, 211, 252, 0.9)';
+  context.lineWidth = 6;
+  const r = (canvas.height - 6) / 2;
   context.beginPath();
-  context.moveTo(2 + r, 2);
-  context.lineTo(canvas.width - 2 - r, 2);
-  context.arc(canvas.width - 2 - r, 2 + r, r, -Math.PI / 2, Math.PI / 2);
-  context.lineTo(2 + r, canvas.height - 2);
-  context.arc(2 + r, 2 + r, r, Math.PI / 2, Math.PI * 1.5);
+  context.moveTo(3 + r, 3);
+  context.lineTo(canvas.width - 3 - r, 3);
+  context.arc(canvas.width - 3 - r, 3 + r, r, -Math.PI / 2, Math.PI / 2);
+  context.lineTo(3 + r, canvas.height - 3);
+  context.arc(3 + r, 3 + r, r, Math.PI / 2, Math.PI * 1.5);
   context.closePath();
   context.fill();
   context.stroke();
-  context.fillStyle = accent ? '#ffffff' : muted ? '#94a3b8' : color;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText(text, canvas.width / 2, canvas.height / 2 + 2);
+  context.lineJoin = 'round';
+  context.lineWidth = 8;
+  context.strokeStyle = 'rgba(2, 6, 23, 0.9)';
+  context.strokeText(text, canvas.width / 2, canvas.height / 2 + 3);
+  context.fillStyle = accent ? '#ffffff' : color;
+  context.fillText(text, canvas.width / 2, canvas.height / 2 + 3);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+  texture.anisotropy = 4;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+    fog: false,
+    toneMapped: false
+  }));
   sprite.renderOrder = 10;
   sprite.userData.keepOpacity = true;
   sprite.scale.set(scale * (canvas.width / canvas.height), scale, 1);

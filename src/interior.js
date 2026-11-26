@@ -6,11 +6,11 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-26
  * Modified     : 2026-11-26
- * Version      : 3.8.0 (daylight cut-away interior)
+ * Version      : 3.9.0 (exact room regions from the plans)
  * Description  : Daylight interior of each SUP'COM floor for the cut-away
  *                3D view, generated from assets/campus/supcom.json:
- *                floor slab with each room's floor tinted (rooms found by a
- *                flood fill of the routing grid inside their bounding box),
+ *                floor slab with each room's floor tinted (room regions of
+ *                the plans, shared with the router),
  *                walls cut at CUT_HEIGHT with a dark section line on top,
  *                door swings, stair treads, glass lift shafts and the four
  *                amphitheatres with tiers rising away from a stage, seat
@@ -131,46 +131,21 @@ export class CampusInterior {
   }
 
   /**
-   * Room regions: flood fill of the indoor cells from each room's interior
-   * point, kept inside its bounding box (doors open into the corridors).
+   * Room regions of the plan (closed by walls and door symbols, exported by
+   * scripts/build-campus.mjs and also used by the router).
    *
-   * @returns {{map: Int16Array, list: {place, index, cells: number[]}[]}}
+   * @returns {{map: Uint8Array, list: {place, index, cells: number[]}[]}}
    */
   #findRooms(level) {
     const campus = this.campus;
-    const { width, height, res, minX, minY } = campus;
-    const cells = campus.cells[campus.levels.indexOf(level)];
-    const map = new Int16Array(width * height);
-    const list = [];
-    const indoor = (i) => cells[i] > 0 && cells[i] <= 4;
-    const places = campus.getPlaces().filter((p) => p.level === level && p.bbox && (p.kind === 'room' || p.kind === 'amphi'));
-    for (const place of places) {
-      const [bx0, by0, bx1, by1] = place.bbox;
-      const cx0 = Math.max(0, Math.floor((bx0 - 0.3 - minX) / res));
-      const cy0 = Math.max(0, Math.floor((by0 - 0.3 - minY) / res));
-      const cx1 = Math.min(width - 1, Math.floor((bx1 + 0.3 - minX) / res));
-      const cy1 = Math.min(height - 1, Math.floor((by1 + 0.3 - minY) / res));
-      const sx = Math.floor((place.x - minX) / res);
-      const sy = Math.floor((place.y - minY) / res);
-      const start = sy * width + sx;
-      if (sx < cx0 || sx > cx1 || sy < cy0 || sy > cy1 || !indoor(start) || map[start]) continue;
-      const index = list.length + 1;
-      const region = [start];
-      map[start] = index;
-      for (let k = 0; k < region.length; k++) {
-        const i = region[k];
-        const x = i % width;
-        const y = (i - x) / width;
-        for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
-          if (nx < cx0 || nx > cx1 || ny < cy0 || ny > cy1) continue;
-          const j = ny * width + nx;
-          if (map[j] || !indoor(j)) continue;
-          map[j] = index;
-          region.push(j);
-        }
-      }
-      list.push({ place, index, cells: region });
-    }
+    const floorIndex = campus.levels.indexOf(level);
+    const map = campus.roomCells[floorIndex] || new Uint8Array(campus.cellsPerFloor);
+    const ids = campus.roomIds[floorIndex] || [];
+    const cells = ids.map(() => []);
+    for (let i = 0; i < map.length; i++) if (map[i]) cells[map[i] - 1].push(i);
+    const list = ids
+      .map((id, k) => ({ place: campus.getPlace(id), index: k + 1, cells: cells[k] }))
+      .filter((room) => room.place && room.cells.length);
     return { map, list };
   }
 

@@ -218,6 +218,10 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
     *   **Prompt ou usage principal :** Claude (Anthropic) : diagnostic des erreurs relevées sur le Samsung S23 (« requires user activation », espace `local-floor` non demandé) et correctifs conservés dans la version WebGPU
     *   **Axe de vérification appliqué par l'étudiant :** Simulateur WebXR reproduisant mot pour mot l'erreur du téléphone, puis démarrage correct ; **validation sur le S23 encore requise**
 
+*   **Composant ou Shader concerné :** Passage par les portes et étiquettes (`scripts/build-campus.mjs` — `grid.rooms`, `src/navigation.js` — `ROOM_EXIT_COST`, `roomAt`, `#lineClear`, `src/view3d.js` — `createLabelSprite`)
+    *   **Prompt ou usage principal :** Claude (Anthropic) : export des régions de salles des plans, coût de sortie d'une salle autre que celle du départ dans Dijkstra, lissage qui n'entre pas dans une autre salle, étiquettes opaques et nettes
+    *   **Axe de vérification appliqué par l'étudiant :** 383 itinéraires : traversées de salles 326 → 247 (le reste n'a pas d'autre passage sur les plans) ; 2 nouveaux tests (70 au total) ; itinéraire Entrée → A0-36 vérifié dans la vue 3D (contourne l'amphithéâtre IBN EL HAITHEM)
+
 *   **Composant ou Shader concerné :** Vue en coupe des étages (`src/interior.js`, `src/mesh-soup.js`, `src/exterior.js` — `setCut`, `src/view3d.js` — `#updateScene`)
     *   **Prompt ou usage principal :** Claude (Anthropic) : intérieur de jour de chaque étage (sols par salle, murs coupés à 2,2 m, portes, marches, ascenseurs vitrés), amphithéâtres en gradins avec sièges instanciés, coupe de l'enveloppe extérieure par `ClippingGroup`, logique des vues 3D / Tous / Campus / Plan
     *   **Axe de vérification appliqué par l'étudiant :** Chrome WebGPU : RDC (4 amphithéâtres), étage 1, « Tous », Plan et Campus ; itinéraire Entrée → Amphi IBN KHALDOUN dessiné dans la coupe ; 68 tests ; recherche « webgl » vide ; **performances sur le S23 encore à vérifier**
@@ -228,11 +232,11 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
 
 *   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
     *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, des données du campus et du build Three.js WebGPU), du manifeste et des icônes
-    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.8.0` (modules `exterior.js`, `exterior-textures.js`, `interior.js` et `mesh-soup.js` ajoutés), mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
+    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.9.0` (modules `exterior.js`, `exterior-textures.js`, `interior.js` et `mesh-soup.js` ajoutés), mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
 
 *   **Composant ou Shader concerné :** Documentation (`README.md`, `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`, `docs/design-notebook.md`, `docs/qr-codes/`, `ATTRIBUTION.md`, `CHANGELOG.md`)
     *   **Prompt ou usage principal :** Rédaction et mise à jour de la documentation technique, du manuel utilisateur, du design notebook UML, du guide téléphone, du README et des attributions
-    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 68 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.8.0
+    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 70 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.9.0
 
 ---
 

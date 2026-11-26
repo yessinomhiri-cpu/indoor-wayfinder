@@ -12,7 +12,7 @@
 | **Repository** | [github.com/yessinomhiri-cpu/indoor-wayfinder](https://github.com/yessinomhiri-cpu/indoor-wayfinder) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Demo phone setup](docs/demo-phone-setup.md) · [Design notebook](docs/design-notebook.md) · [Changelog](CHANGELOG.md) · [Attribution](ATTRIBUTION.md) |
 | **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — v3.8.0, deployed 26 Nov 2026 |
-| **App version** | `v3.8.0` |
+| **App version** | `v3.9.0` |
 | **Last updated** | 2026-11-26 |
 
 ---
@@ -58,7 +58,7 @@ All 3D is rendered by Three.js **r187** `WebGPURenderer` on the **WebGPU** backe
 ## Run it
 
 ```bash
-npm test                                  # 68 tests (Node, no browser needed)
+npm test                                  # 70 tests (Node, no browser needed)
 python -m http.server 8000                # http://localhost:8000 (HTTPS needed on the phone)
 node scripts/build-campus.mjs             # re-import the SUP'COM plans + OpenStreetMap
 ```
@@ -135,7 +135,7 @@ Each QR code encodes a place id: `ENTREE_PRINCIPALE`, `ACCUEIL`, `AMPHI_KHAWAREZ
 
 ## Verified
 
-- **Node tests: 68/68** (`npm test`):
+- **Node tests: 70/70** (`npm test`):
   - campus and routing: every official place reachable, all 241 places routed from the entrance, 3rd-floor routes through stairs or a lift, lifts-only strategy, French steps, compass maths;
   - AR guidance: 12 simulated walks with an unknown AR yaw and a biased compass (mean error < 0.6 m), floor fallback, the blue arrow within 25° of the true route direction;
   - camera mode: step counting on simulated walks and shaking, the Entrée → Amphi IBN KHALDOUN walk with a ±15° compass, stairs to the 3rd floor;

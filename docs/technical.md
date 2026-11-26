@@ -21,7 +21,7 @@ augmentée WebXR orienté par la boussole.
 | Localisation | QR (`getUserMedia` + `BarcodeDetector` / jsQR 1.4.0), GPS extérieur (Geolocation) |
 | Orientation | DeviceOrientation absolu (`deviceorientationabsolute`) |
 | Données | `assets/campus/supcom.json` généré par `scripts/build-campus.mjs` |
-| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.8.0` |
+| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.9.0` |
 | Hébergement | HTTPS : Vercel (actif) ; GitHub Pages (à activer par le propriétaire du dépôt, accès admin requis) |
 
 Aucune ligne du code de l'application ne crée de contexte WebGL : `src/gpu.js`
@@ -122,6 +122,11 @@ alias QR ou point `{ level, x, y }` (toucher sur le plan, GPS).
   vers le Sud-Ouest », « Prenez l'escalier (Bloc A) jusqu'à l'étage 3 ».
 - `distancesFrom(from)` : une seule passe vers tous les lieux (≈ 0,3 s) pour la
   liste des destinations.
+- **Passage par les portes** : `grid.rooms` donne la région de chaque salle
+  (fermée par les murs et les symboles de porte). Sortir d'une salle autre que
+  la salle de départ coûte 80 m (non compté dans les distances affichées) ; le
+  lissage refuse les raccourcis qui entrent dans une troisième salle. Les
+  itinéraires restent dans les couloirs et entrent / sortent par les portes.
 
 ## 6. Vue 3D (WebGPU)
 

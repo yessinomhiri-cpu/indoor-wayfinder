@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-12
- * Version      : 3.0.0 (SUP'COM campus – multi-floor routing)
+ * Modified     : 2026-11-26
+ * Version      : 3.9.0 (routes keep out of other rooms, through doors)
  * Description  : Campus model and route finding for the real SUP'COM
  *                building (assets/campus/supcom.json).
  *                - CampusMap: places, floors, stair/lift connectors and the
@@ -16,6 +16,10 @@
  *                  walkable cells of all floors (8-neighbour edges) and whose
  *                  vertical edges are stairs and lifts. Route strategies
  *                  (Strategy pattern) choose which connectors may be used.
+ *                  Leaving a room (other than the start room) costs
+ *                  ROOM_EXIT_COST, so routes use the corridors and only
+ *                  go in and out of the start and destination rooms by
+ *                  their doors instead of cutting through other rooms.
  *                - Turn-by-turn steps with compass directions.
  * ==========================================================================
  */
@@ -23,6 +27,13 @@
 /** Cost multiplier per walkable class (1 = touching a wall … 4 = ≥ 0.75 m). */
 const CLEARANCE_COST = [Infinity, 2.6, 1.6, 1.15, 1];
 const SQRT2 = Math.SQRT2;
+
+/**
+ * Extra cost (metres) for walking out of a room that is not the start room:
+ * crossing a room from one door to another is only chosen when the corridor
+ * detour is longer than this. Not counted in the reported distances.
+ */
+const ROOM_EXIT_COST = 80;
 
 /** Cardinal names for bearings (0° = north, clockwise). */
 const CARDINALS = ['Nord', 'Nord-Est', 'Est', 'Sud-Est', 'Sud', 'Sud-Ouest', 'Ouest', 'Nord-Ouest'];
@@ -177,6 +188,10 @@ export class CampusMap {
     this.height = grid.height;
     this.cellsPerFloor = grid.width * grid.height;
     this.cells = grid.floors.map((runs) => decodeRuns(runs, this.cellsPerFloor));
+    // Room regions (closed by walls and door symbols): 0 = corridor / hall,
+    // k = room roomIds[floor][k - 1]
+    this.roomCells = (grid.rooms || []).map((floor) => decodeRuns(floor.runs, this.cellsPerFloor));
+    this.roomIds = (grid.rooms || []).map((floor) => floor.ids);
 
     /** @type {Map<string, Object>} */
     this.places = new Map();
@@ -289,6 +304,19 @@ export class CampusMap {
     return value > 4 ? value - 4 : value;
   }
 
+  /** @returns {number} Room index of a cell on a floor (0 = not in a room). */
+  roomIndex(level, index) {
+    const floorIndex = this.levels.indexOf(level);
+    const rooms = this.roomCells[floorIndex];
+    return rooms && index >= 0 ? rooms[index] : 0;
+  }
+
+  /** @returns {string|null} Place id of the room containing a cell. */
+  roomAt(level, index) {
+    const room = this.roomIndex(level, index);
+    return room ? this.roomIds[this.levels.indexOf(level)][room - 1] : null;
+  }
+
   /** @returns {boolean} True for outdoor cells (ground floor around the building). */
   isOutdoor(level, index) {
     const floorIndex = this.levels.indexOf(level);
@@ -391,6 +419,7 @@ export class CampusRouter {
       if (exit) { start.cell = exit.cell; startGap = exit.distance; }
     }
     const startNode = startFloor * n + start.cell;
+    const startRoom = campus.roomIndex(start.level, start.cell);
     const goalNode = campus.levels.indexOf(goal.level) * n + goal.cell;
     if (startNode === goalNode) {
       return { found: true, distance: 0, legs: [], steps: [{ kind: 'arrive', text: 'Vous êtes déjà sur place.' }], strategy: this.strategy.label };
@@ -399,6 +428,7 @@ export class CampusRouter {
     const total = n * floorCount;
     const cost = new Float32Array(total).fill(Infinity);
     const parent = new Int32Array(total).fill(-1);
+    const penalty = new Float32Array(total); // room-exit costs included in `cost`
     const closed = new Uint8Array(total);
     const heap = new MinHeap(1 << 16);
     const width = campus.width;
@@ -430,6 +460,9 @@ export class CampusRouter {
       const floorIndex = Math.floor(node / n);
       const cell = node - floorIndex * n;
       const cells = campus.cells[floorIndex];
+      const rooms = campus.roomCells[floorIndex];
+      const room = rooms ? rooms[cell] : 0;
+      const inOtherRoom = room > 0 && !(floorIndex === startFloor && room === startRoom);
       const cx = cell % width;
       const cy = (cell - cx) / width;
       const base = cost[node];
@@ -446,9 +479,11 @@ export class CampusRouter {
         if (dx && dy && !cells[cy * width + nx] && !cells[ny * width + cx]) continue;
         const klass = value > 4 ? value - 4 : value;
         const next = floorIndex * n + neighbour;
-        const candidate = base + step * res * CLEARANCE_COST[klass];
+        const exit = inOtherRoom && rooms[neighbour] !== room ? ROOM_EXIT_COST : 0;
+        const candidate = base + step * res * CLEARANCE_COST[klass] + exit;
         if (candidate < cost[next]) {
           cost[next] = candidate;
+          penalty[next] = penalty[node] + exit;
           parent[next] = node;
           heap.push(candidate + heuristic(next), next);
         }
@@ -463,6 +498,7 @@ export class CampusRouter {
           const candidate = base + price;
           if (candidate < cost[link.to]) {
             cost[link.to] = candidate;
+            penalty[link.to] = penalty[node];
             parent[link.to] = node;
             heap.push(candidate + heuristic(link.to), link.to);
           }
@@ -551,7 +587,7 @@ export class CampusRouter {
       approximate: gap > 0 || startGap > 0,
       gap: Math.max(gap, startGap),
       distance: walking,
-      cost: cost[endNode],
+      cost: cost[endNode] - penalty[endNode],
       legs,
       steps,
       from: start,
@@ -577,11 +613,14 @@ export class CampusRouter {
     const n = campus.cellsPerFloor;
     const total = n * campus.levels.length;
     const cost = new Float32Array(total).fill(Infinity);
+    const penalty = new Float32Array(total);
     const closed = new Uint8Array(total);
     const heap = new MinHeap(1 << 16);
     const width = campus.width;
     const res = campus.res;
-    const startNode = campus.levels.indexOf(start.level) * n + start.cell;
+    const startFloor = campus.levels.indexOf(start.level);
+    const startNode = startFloor * n + start.cell;
+    const startRoom = campus.roomIndex(start.level, start.cell);
     cost[startNode] = 0;
     heap.push(0, startNode);
     const offsets = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, SQRT2], [1, -1, SQRT2], [-1, 1, SQRT2], [-1, -1, SQRT2]];
@@ -594,6 +633,9 @@ export class CampusRouter {
       const floorIndex = Math.floor(node / n);
       const cell = node - floorIndex * n;
       const cells = campus.cells[floorIndex];
+      const rooms = campus.roomCells[floorIndex];
+      const room = rooms ? rooms[cell] : 0;
+      const inOtherRoom = room > 0 && !(floorIndex === startFloor && room === startRoom);
       const cx = cell % width;
       const cy = (cell - cx) / width;
       for (const [dx, dy, step] of offsets) {
@@ -606,8 +648,9 @@ export class CampusRouter {
         if (dx && dy && !cells[cy * width + nx] && !cells[ny * width + cx]) continue;
         const klass = value > 4 ? value - 4 : value;
         const next = floorIndex * n + neighbour;
-        const candidate = key + step * res * CLEARANCE_COST[klass];
-        if (candidate < cost[next]) { cost[next] = candidate; heap.push(candidate, next); }
+        const exit = inOtherRoom && rooms[neighbour] !== room ? ROOM_EXIT_COST : 0;
+        const candidate = key + step * res * CLEARANCE_COST[klass] + exit;
+        if (candidate < cost[next]) { cost[next] = candidate; penalty[next] = penalty[node] + exit; heap.push(candidate, next); }
       }
       const links = this.verticalLinks.get(node);
       if (!links) continue;
@@ -615,14 +658,15 @@ export class CampusRouter {
         const price = this.strategy.connectorCost(link.connector, link.levels);
         if (!Number.isFinite(price)) continue;
         const candidate = key + price;
-        if (candidate < cost[link.to]) { cost[link.to] = candidate; heap.push(candidate, link.to); }
+        if (candidate < cost[link.to]) { cost[link.to] = candidate; penalty[link.to] = penalty[node]; heap.push(candidate, link.to); }
       }
     }
 
     for (const place of campus.getPlaces()) {
       const cell = campus.snap(place.level, place.x, place.y);
       if (cell < 0) continue;
-      const value = cost[campus.levels.indexOf(place.level) * n + cell];
+      const node = campus.levels.indexOf(place.level) * n + cell;
+      const value = cost[node] - penalty[node];
       if (Number.isFinite(value)) result.set(place.id, value);
     }
     return result;
@@ -783,14 +827,22 @@ export class CampusRouter {
     return out;
   }
 
+  /**
+   * A shortcut is kept only with clear space all along and without cutting
+   * into a room that neither end is in (routes enter rooms by their doors).
+   */
   #lineClear(level, [x0, y0], [x1, y1]) {
     const campus = this.campus;
     const distance = Math.hypot(x1 - x0, y1 - y0);
     const samples = Math.ceil(distance / (campus.res * 0.5));
+    const roomA = campus.roomIndex(level, campus.cellIndex(x0, y0));
+    const roomB = campus.roomIndex(level, campus.cellIndex(x1, y1));
     for (let s = 1; s < samples; s++) {
       const t = s / samples;
       const index = campus.cellIndex(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
       if (campus.walkClass(level, index) < 2) return false;
+      const room = campus.roomIndex(level, index);
+      if (room && room !== roomA && room !== roomB) return false;
     }
     return true;
   }

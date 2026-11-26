@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-05
- * Modified     : 2026-11-12
- * Version      : 3.0.0 (SUP'COM campus)
+ * Modified     : 2026-11-26
+ * Version      : 3.9.0 (SUP'COM campus; routes through doors)
  * Description  : Node tests for the SUP'COM campus model, the multi-floor
  *                Dijkstra router, the route strategies, the turn-by-turn
  *                steps and the compass maths. Run: node --test scripts/
@@ -129,6 +129,51 @@ test('single-source distances match point-to-point routes', () => {
   const distances = router.distancesFrom('ENTREE_PRINCIPALE');
   const route = router.findRoute('ENTREE_PRINCIPALE', 'AMPHI_KHAWAREZMI');
   assert.ok(Math.abs(distances.get('AMPHI_KHAWAREZMI') - route.cost) < 0.5);
+});
+
+/** Rooms (other than the endpoints' rooms) that a route's line goes through. */
+function roomsCrossed(route, allowed) {
+  const crossed = new Set();
+  for (const leg of route.legs) {
+    for (let i = 1; i < leg.points.length; i++) {
+      const [x0, y0] = leg.points[i - 1];
+      const [x1, y1] = leg.points[i];
+      const samples = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.25);
+      for (let s = 0; s <= samples; s++) {
+        const t = s / samples;
+        const id = campus.roomAt(leg.level, campus.cellIndex(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
+        if (id && !allowed.includes(id)) crossed.add(id);
+      }
+    }
+  }
+  return crossed;
+}
+
+test('room regions: each room of the plan is found at its own place', () => {
+  const rooms = campus.getPlaces().filter((p) => p.kind === 'room' || p.kind === 'amphi');
+  const inside = rooms.filter((p) => campus.roomAt(p.level, campus.cellIndex(p.x, p.y)) === p.id);
+  assert.ok(inside.length / rooms.length > 0.95, `${inside.length}/${rooms.length} rooms`);
+  const entrance = campus.getPlace('ENTREE_PRINCIPALE');
+  assert.equal(campus.roomAt(0, campus.cellIndex(entrance.x, entrance.y)), null, 'the entrance is not in a room');
+});
+
+test('routes go round other rooms and use the doors (no shortcut through a room)', () => {
+  // Each of these used to cut through the listed rooms
+  const cases = [
+    ['A0-36', ['AMPHI_IBN_EL_HAITHEM', 'A0-38']],
+    ['C0-04', ['C0-13', 'C0-14', 'C0-05']],
+    ['B0-21', ['B0-31']],
+    ['A0-15', ['A0-14']]
+  ];
+  for (const [to, avoided] of cases) {
+    const route = router.findRoute('ENTREE_PRINCIPALE', to);
+    assert.ok(route.found, to);
+    const crossed = roomsCrossed(route, [to]);
+    for (const id of avoided) assert.ok(!crossed.has(id), `route to ${to} crosses ${id}`);
+  }
+  // From a room: leave by its door, never through a neighbouring room
+  const fromRoom = router.findRoute('A0-36', 'AMPHI_IBN_KHALDOUN');
+  assert.equal(roomsCrossed(fromRoom, ['A0-36', 'AMPHI_IBN_KHALDOUN']).size, 0);
 });
 
 test('same start and destination', () => {
