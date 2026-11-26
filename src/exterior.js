@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-26
  * Modified     : 2026-11-26
- * Version      : 3.7.1 (arch against the entrance wall)
+ * Version      : 3.8.0 (building cut at a floor for the cut-away view)
  * Description  : Daylight exterior model of the SUP'COM main building for
  *                the "Campus" view, built from the real floor outlines in
  *                assets/campus/supcom.json (one prism per floor, so set-backs
@@ -31,6 +31,7 @@ import {
   createSignTexture,
   createTunisiaFlagTexture
 } from './exterior-textures.js';
+import { Soup, UP } from './mesh-soup.js';
 
 /** Daylight palette used by the view while the exterior is shown. */
 export const DAYLIGHT = {
@@ -50,8 +51,6 @@ const ROADS = {
   footway: { width: 2.4, color: 0xd6cfbf },
   path: { width: 2, color: 0xcbbf9f }
 };
-
-const UP = [0, 1, 0];
 
 /** Height of each flat ground layer (avoids depth fighting at a distance). */
 const LAYER = { road: 0.06, apron: 0.1, forecourt: 0.12, lawn: 0.16 };
@@ -147,42 +146,6 @@ function ringFrame(ring) {
   return { edges, miters };
 }
 
-/** Growing non-indexed triangle soup with normals and UVs. */
-class Soup {
-  constructor() {
-    this.positions = [];
-    this.normals = [];
-    this.uvs = [];
-  }
-
-  /** Quad a0-b0-b1-a1 (counter-clockwise seen from the front). */
-  quad(a0, b0, b1, a1, normals = null, uvs = null) {
-    this.positions.push(...a0, ...b0, ...b1, ...a0, ...b1, ...a1);
-    if (normals) {
-      const [na, nb] = normals;
-      this.normals.push(...na, ...nb, ...nb, ...na, ...nb, ...na);
-    }
-    const [u0, v0, u1, v1] = uvs || [0, 0, 1, 1];
-    this.uvs.push(u0, v0, u1, v0, u1, v1, u0, v0, u1, v1, u0, v1);
-  }
-
-  geometry() {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2));
-    if (this.normals.length === this.positions.length) {
-      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(this.normals, 3));
-    } else {
-      geometry.computeVertexNormals();
-    }
-    return geometry;
-  }
-
-  get empty() {
-    return this.positions.length === 0;
-  }
-}
-
 // =============================================================================
 // Exterior model
 // =============================================================================
@@ -197,6 +160,16 @@ export class CampusExterior {
     this.group = new THREE.Group();
     this.group.name = 'campusExterior';
     this.group.visible = false;
+
+    // The building itself can be cut at a floor (cut-away 3D view); the
+    // site (arch, flags, forecourt, landscape, sky) never is.
+    this.cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0); // keeps y ≤ constant
+    this.building = new THREE.ClippingGroup();
+    this.building.name = 'building';
+    this.building.clippingPlanes = [this.cutPlane];
+    this.building.clipShadows = true;
+    this.building.enabled = false;
+    this.group.add(this.building);
 
     this.floors = campus.floors
       .filter((floor) => floor.outline && floor.outline.length)
@@ -226,6 +199,20 @@ export class CampusExterior {
         child.receiveShadow = true;
       }
     });
+  }
+
+  /**
+   * setCut
+   * ------
+   * Cuts the building at a height (cut-away view) or shows it whole.
+   *
+   * @param {number|null} height – World height of the cut, or null.
+   * @param {boolean} [hidden] – Hide the building entirely (stacked floors).
+   */
+  setCut(height, hidden = false) {
+    this.building.visible = !hidden;
+    this.building.enabled = height !== null;
+    if (height !== null) this.cutPlane.constant = height;
   }
 
   /**
@@ -489,14 +476,14 @@ export class CampusExterior {
     const towerMap = createTowerTexture();
     const wingMap = createWingTexture();
     const meshes = [
-      [tower, new THREE.MeshStandardMaterial({ map: towerMap, roughness: 0.62, metalness: 0.04 })],
-      [wing, new THREE.MeshStandardMaterial({ map: wingMap, roughness: 0.3, metalness: 0.25 })],
+      [tower, new THREE.MeshStandardMaterial({ map: towerMap, roughness: 0.62, metalness: 0.04, side: THREE.DoubleSide })],
+      [wing, new THREE.MeshStandardMaterial({ map: wingMap, roughness: 0.3, metalness: 0.25, side: THREE.DoubleSide })],
       [crown, new THREE.MeshStandardMaterial({ color: COLOR.crown, roughness: 0.7, side: THREE.DoubleSide })],
       [fascia, new THREE.MeshStandardMaterial({ color: COLOR.fascia, roughness: 0.6, side: THREE.DoubleSide })]
     ];
     for (const [soup, material] of meshes) {
       if (soup.empty) continue;
-      this.group.add(new THREE.Mesh(soup.geometry(), material));
+      this.building.add(new THREE.Mesh(soup.geometry(), material));
     }
 
     if (columns.length) {
@@ -509,7 +496,7 @@ export class CampusExterior {
         mesh.setMatrixAt(index, matrix);
       });
       mesh.instanceMatrix.needsUpdate = true;
-      this.group.add(mesh);
+      this.building.add(mesh);
     }
   }
 
@@ -523,7 +510,7 @@ export class CampusExterior {
         const geometry = new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2);
         const roof = new THREE.Mesh(geometry, material);
         roof.position.y = (floor.level + 1) * this.floorHeight - 0.02;
-        this.group.add(roof);
+        this.building.add(roof);
       }
     }
   }
@@ -703,7 +690,7 @@ export class CampusExterior {
     sign.position.copy(toWorld(edge.point[0] + edge.normal[0] * offset, edge.point[1] + edge.normal[1] * offset, roof + 1.1));
     sign.rotation.y = Math.atan2(edge.normal[0], -edge.normal[1]);
     sign.userData.noShadow = true;
-    this.group.add(sign);
+    this.building.add(sign);
   }
 
   // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
  * Modified     : 2026-11-26
- * Version      : 3.7.1 (Campus view on open, immediate framing)
+ * Version      : 3.8.0 (daylight cut-away 3D view of each floor)
  * Description  : Real-time WebGPU view of the SUP'COM campus generated from
  *                assets/campus/supcom.json: the main building with its four
  *                floors (walls, doors, stairs, lifts from the SUP'COM plans),
@@ -22,6 +22,7 @@
 import * as THREE from 'three';
 import { createWebGPURenderer } from './gpu.js';
 import { CampusExterior, DAYLIGHT } from './exterior.js';
+import { CampusInterior, CUT_HEIGHT } from './interior.js';
 
 const COLOR = {
   accent: 0x00d2ff,
@@ -39,7 +40,7 @@ const COLOR = {
   path: 0x2a3a58
 };
 
-/** Night palette of the indoor views (3D / Plan). */
+/** Night palette of the Plan view. */
 const NIGHT = {
   background: null,
   fog: { color: 0x070913, near: 380, far: 900 },
@@ -87,7 +88,10 @@ export class CampusView3D {
     this.floorGroups = new Map();   // level → Group
     this.floorSlabs = [];           // pickable meshes
     this.labelSprites = [];         // { sprite, level, official }
-    this.exterior = null;           // CampusExterior (Campus view)
+    this.labelGroups = new Map();   // level → Group of labels (3D and Plan)
+    this.exterior = null;           // CampusExterior (Campus view, cut-away shell)
+    this.interior = null;           // CampusInterior (cut-away 3D view)
+    this.daylight = false;          // current palette
     this.environment = null;        // lights, ground and context materials (theme)
     this.activeLevel = 0;
     this.showAllFloors = false;
@@ -151,7 +155,8 @@ export class CampusView3D {
     this.#buildContext();
     this.#buildFloors();
     this.exterior = new CampusExterior(this.campus);
-    this.scene.add(this.exterior.group);
+    this.interior = new CampusInterior(this.campus);
+    this.scene.add(this.exterior.group, this.interior.group);
     this.#buildNorthArrow();
     this.setFloor(0);
     this.#bindPointerControls();
@@ -197,11 +202,39 @@ export class CampusView3D {
     if (level !== 'all' && this.viewMode === 'campus') this.#leaveCampus();
     this.showAllFloors = level === 'all';
     if (!this.showAllFloors) this.activeLevel = level;
-    const active = this.showAllFloors ? Math.max(...this.campus.levels) : this.activeLevel;
-    const interior = this.viewMode !== 'campus';
+    this.#updateScene();
+    if (this.lastFrame) this.#frame(this.lastFrame.center, this.lastFrame.radius);
+  }
+
+  /**
+   * #updateScene
+   * ------------
+   * What each view shows:
+   * - Campus: the whole exterior, daylight;
+   * - 3D (cut-away): the exterior cut just above the chosen floor and that
+   *   floor's interior, daylight; "Tous" stacks every floor's interior;
+   * - Plan: the night floor plans seen from above (lower floors dimmed).
+   */
+  #updateScene() {
+    const mode = this.viewMode;
+    const daylight = mode !== 'top';
+    if (daylight !== this.daylight) {
+      this.daylight = daylight;
+      this.#applyEnvironment(daylight);
+    }
+    const levels = this.campus.levels;
+    const active = this.showAllFloors ? Math.max(...levels) : this.activeLevel;
+
+    if (mode === '3d') {
+      this.exterior.setCut(this.showAllFloors ? null : this.#levelHeight(active) + CUT_HEIGHT, this.showAllFloors);
+      this.interior.show(this.showAllFloors ? levels : [active]);
+    } else {
+      this.exterior.setCut(null);
+      this.interior.show([]);
+    }
 
     for (const [floorLevel, group] of this.floorGroups) {
-      group.visible = interior && floorLevel <= active;
+      group.visible = mode === 'top' && floorLevel <= active;
       const dim = !this.showAllFloors && floorLevel < active;
       group.traverse((child) => {
         if (!child.material || child.userData.keepOpacity) return;
@@ -211,11 +244,13 @@ export class CampusView3D {
         child.material.depthWrite = !dim && base >= 1;
       });
     }
+    for (const [floorLevel, group] of this.labelGroups) {
+      group.visible = mode !== 'campus' && (mode === 'top' ? floorLevel <= active : this.showAllFloors || floorLevel === active);
+    }
     for (const label of this.labelSprites) {
       label.sprite.visible = label.level === active || (this.showAllFloors && label.official);
     }
     if (this.routeGroup) this.#updateRouteVisibility();
-    if (this.lastFrame) this.#frame(this.lastFrame.center, this.lastFrame.radius);
   }
 
   /** @returns {number} Currently shown floor. */
@@ -226,13 +261,12 @@ export class CampusView3D {
   /**
    * setViewMode
    * -----------
-   * @param {'3d'|'top'|'campus'} mode – Orbit view, top view (north up), or
-   *        the low-angle campus exterior view.
+   * @param {'3d'|'top'|'campus'} mode – Cut-away orbit view of a floor, top
+   *        view (north up, night plan), or the low-angle campus exterior view.
    * @param {{immediate?: boolean}} [options] – Jump to the view without easing
    *        (used for the first view when the site opens).
    */
   setViewMode(mode, { immediate = false } = {}) {
-    const wasCampus = this.viewMode === 'campus';
     this.viewMode = mode;
     if (mode === 'top') {
       this.goalElevation = MAX_ELEVATION;
@@ -245,10 +279,7 @@ export class CampusView3D {
     } else {
       this.goalElevation = 0.95;
     }
-    if (wasCampus !== (mode === 'campus')) {
-      this.#applyEnvironment(mode === 'campus');
-      this.setFloor(this.showAllFloors ? 'all' : this.activeLevel);
-    }
+    this.#updateScene();
   }
 
   /** Back to the interior 3D view (and tell the UI). */
@@ -260,8 +291,8 @@ export class CampusView3D {
   /**
    * #applyEnvironment
    * -----------------
-   * Daylight exterior (Campus view) or the night palette of the indoor views:
-   * sky, fog, lights, ground and surroundings colours, shadowing sun.
+   * Daylight (Campus and cut-away 3D views) or the night palette of the Plan
+   * view: sky, fog, lights, ground and surroundings colours, shadowing sun.
    */
   #applyEnvironment(daylight) {
     const theme = daylight ? DAYLIGHT : NIGHT;
@@ -312,20 +343,23 @@ export class CampusView3D {
     this.#updateRouteVisibility();
 
     // A route or a destination is shown inside the building
-    if (this.viewMode === 'campus' && ((route && route.found) || destination)) this.#leaveCampus();
+    // (the Campus view shows every floor: pick the route's floor instead)
+    const fromCampus = this.viewMode === 'campus' && Boolean((route && route.found) || destination);
+    if (fromCampus) this.#leaveCampus();
+    const pickFloor = !this.showAllFloors || fromCampus;
 
     // Show the floor where the route starts, and frame the route
     if (route && route.found && route.legs.length) {
       const points = route.legs.flatMap((leg) => leg.points.map(([x, y]) => toWorld(x, y, this.#levelHeight(leg.level))));
       const box = new THREE.Box3().setFromPoints(points);
       const sphere = box.getBoundingSphere(new THREE.Sphere());
-      if (!this.showAllFloors) this.setFloor(route.legs.length > 1 ? 'all' : route.legs[0].level);
+      if (pickFloor) this.setFloor(route.legs.length > 1 ? 'all' : route.legs[0].level);
       this.#frame(sphere.center, Math.max(sphere.radius + 6, 14));
     } else if (destination) {
-      if (!this.showAllFloors) this.setFloor(destination.level);
+      if (pickFloor) this.setFloor(destination.level);
       this.#frame(toWorld(destination.x, destination.y, this.#levelHeight(destination.level)), 22);
     } else if (current) {
-      if (!this.showAllFloors) this.setFloor(current.level);
+      if (pickFloor) this.setFloor(current.level);
       this.#frame(toWorld(current.x, current.y, this.#levelHeight(current.level)), 30);
     }
   }
@@ -408,8 +442,9 @@ export class CampusView3D {
   /** Frames a place. */
   focusPlace(place) {
     if (!place) return;
-    if (this.viewMode === 'campus') this.#leaveCampus();
-    if (!this.showAllFloors) this.setFloor(place.level);
+    const fromCampus = this.viewMode === 'campus';
+    if (fromCampus) this.#leaveCampus();
+    if (!this.showAllFloors || fromCampus) this.setFloor(place.level);
     this.#frame(toWorld(place.x, place.y, this.#levelHeight(place.level)), 18);
   }
 
@@ -533,7 +568,12 @@ export class CampusView3D {
       group.add(lineMesh(floor.stairs || [], base + 0.04, COLOR.stairs));
       group.add(lineMesh(floor.lifts || [], base + 0.05, COLOR.lift));
 
-      // Labels: official SUP'COM places, connectors and room codes
+      // Labels: official SUP'COM places, connectors and room codes (shared
+      // by the cut-away 3D view and the Plan view)
+      const labels = new THREE.Group();
+      labels.name = `labels-${floor.level}`;
+      this.labelGroups.set(floor.level, labels);
+      this.scene.add(labels);
       for (const place of campus.getPlaces()) {
         if (place.level !== floor.level && !(place.connector && this.#connectorServes(place.connector, floor.level))) continue;
         const official = place.official || place.surveyed;
@@ -541,7 +581,7 @@ export class CampusView3D {
         const text = isConnector ? (place.kind === 'lift' ? '⇅ Ascenseur' : '▤ Escalier') : (official ? place.name : place.code || place.id);
         const label = createLabelSprite(text, { scale: official ? 2.4 : 1.5, muted: !official, accent: false });
         label.position.copy(toWorld(place.x, place.y, base + (official ? 4.2 : 3.4)));
-        group.add(label);
+        labels.add(label);
         this.labelSprites.push({ sprite: label, level: floor.level, official: official && !isConnector });
       }
 
@@ -893,7 +933,7 @@ export class CampusView3D {
     const canvas = this.renderer.domElement;
 
     canvas.addEventListener('pointerdown', (event) => {
-      canvas.setPointerCapture?.(event.pointerId);
+      try { canvas.setPointerCapture?.(event.pointerId); } catch { /* pointer already released */ }
       this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       this.gesture = this.pointers.size === 1
         ? { startX: event.clientX, startY: event.clientY, startTime: performance.now(), moved: false }
@@ -983,8 +1023,9 @@ export class CampusView3D {
     );
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, this.camera);
-    const candidates = this.floorSlabs.filter((slab) => slab.parent.visible &&
-      (this.showAllFloors || slab.userData.level === this.activeLevel));
+    const candidates = this.viewMode === '3d'
+      ? this.interior.pickTargets
+      : this.floorSlabs.filter((slab) => slab.parent.visible && (this.showAllFloors || slab.userData.level === this.activeLevel));
     const hit = raycaster.intersectObjects(candidates, false)[0];
     if (hit) {
       this.onPick({ level: hit.object.userData.level, x: hit.point.x, y: -hit.point.z });

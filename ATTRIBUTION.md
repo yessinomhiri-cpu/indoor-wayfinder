@@ -30,6 +30,12 @@ Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
     *   **Licence :** Code du projet (projet académique SUP'COM)
     *   **Modifications apportées par l'équipe :** Rendu WebGPU (`WebGPURenderer`), 4 niveaux empilés à 3,6 m, sélecteur d'étage, vue orbite et vue « Plan » nord en haut ; vue Campus v3.6.0 (nocturne) remplacée en v3.7.0 par la maquette extérieure de jour ci-dessous
 
+*   **Asset :** Intérieur des étages en coupe — bouton « 3D » (`src/interior.js`, `src/mesh-soup.js`, v3.8.0)
+    *   **Source originale :** Aucun modèle importé — sols des salles, murs coupés, portes, marches, cages d'ascenseur et amphithéâtres générés par code à partir des plans SUP'COM (`assets/campus/supcom.json`) ; les plans ne contenant pas de mobilier, les gradins, sièges, tableau et pupitre des amphithéâtres sont une **disposition plausible inventée par l'équipe**, pas un relevé
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet (projet académique SUP'COM)
+    *   **Modifications apportées par l'équipe :** Salles retrouvées par remplissage de la grille de circulation, coupe du bâtiment extérieur par un plan de coupe WebGPU (`ClippingGroup`)
+
 *   **Asset :** Maquette extérieure de SUP'COM — vue « Campus » (`src/exterior.js`, `src/exterior-textures.js`, v3.7.0)
     *   **Source originale :** Aucun modèle, image ou texture importé — façades extrudées par code à partir des contours d'étage des plans SUP'COM (`floors[].outline`), corniches, poteaux, arche parabolique, mâts, palmiers, arbres, lampadaires, voies (OpenStreetMap) et ciel générés avec des primitives Three.js ; textures (baie de tour, mur-rideau, dallage, enseigne, drapeau) dessinées sur canvas 2D par le code
     *   **Auteur / Créateur :** Équipe Indoor Wayfinder
@@ -212,17 +218,21 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
     *   **Prompt ou usage principal :** Claude (Anthropic) : diagnostic des erreurs relevées sur le Samsung S23 (« requires user activation », espace `local-floor` non demandé) et correctifs conservés dans la version WebGPU
     *   **Axe de vérification appliqué par l'étudiant :** Simulateur WebXR reproduisant mot pour mot l'erreur du téléphone, puis démarrage correct ; **validation sur le S23 encore requise**
 
+*   **Composant ou Shader concerné :** Vue en coupe des étages (`src/interior.js`, `src/mesh-soup.js`, `src/exterior.js` — `setCut`, `src/view3d.js` — `#updateScene`)
+    *   **Prompt ou usage principal :** Claude (Anthropic) : intérieur de jour de chaque étage (sols par salle, murs coupés à 2,2 m, portes, marches, ascenseurs vitrés), amphithéâtres en gradins avec sièges instanciés, coupe de l'enveloppe extérieure par `ClippingGroup`, logique des vues 3D / Tous / Campus / Plan
+    *   **Axe de vérification appliqué par l'étudiant :** Chrome WebGPU : RDC (4 amphithéâtres), étage 1, « Tous », Plan et Campus ; itinéraire Entrée → Amphi IBN KHALDOUN dessiné dans la coupe ; 68 tests ; recherche « webgl » vide ; **performances sur le S23 encore à vérifier**
+
 *   **Composant ou Shader concerné :** Maquette extérieure de SUP'COM (`src/exterior.js`, `src/exterior-textures.js`, `src/view3d.js` — `#applyEnvironment`, `scripts/build-campus.mjs` — `outlinePolygons`, `scripts/test-exterior.mjs`)
     *   **Prompt ou usage principal :** Claude (Anthropic) : analyse des images de la vidéo officielle SUP'COM, contours d'étage par marching squares, extrusion des façades par étage avec coordonnées de texture alignées (baies des tours, mur-rideau de l'aile), corniches et poteaux sur les bords de toit, arche, mâts, enseigne, végétation instanciée, routes en rubans, ciel et ombres du soleil ; palette de jour pour la vue Campus (vue d'ouverture du site, v3.7.1), arche posée contre le mur de l'entrée et retour automatique à la vue 3D
     *   **Axe de vérification appliqué par l'étudiant :** Données régénérées comparées à l'ancien `supcom.json` (grille, salles, lieux et connecteurs identiques ; seuls les contours et le parvis sont ajoutés, plus deux bâtiments OSM édités entre-temps) ; 4 tests sur les contours (68 au total) ; rendu Chrome WebGPU comparé aux images de la vidéo (arche, enseigne, drapeaux, aile vitrée, tours) ; recherche « webgl » vide
 
 *   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
     *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, des données du campus et du build Three.js WebGPU), du manifeste et des icônes
-    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.7.1` (modules `exterior.js` et `exterior-textures.js` ajoutés), mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
+    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.8.0` (modules `exterior.js`, `exterior-textures.js`, `interior.js` et `mesh-soup.js` ajoutés), mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
 
 *   **Composant ou Shader concerné :** Documentation (`README.md`, `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`, `docs/design-notebook.md`, `docs/qr-codes/`, `ATTRIBUTION.md`, `CHANGELOG.md`)
     *   **Prompt ou usage principal :** Rédaction et mise à jour de la documentation technique, du manuel utilisateur, du design notebook UML, du guide téléphone, du README et des attributions
-    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 68 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.7.1
+    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 68 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.8.0
 
 ---
 

@@ -1,6 +1,6 @@
 # Manuel utilisateur — Indoor Wayfinder
 
-**Version :** 3.7.1
+**Version :** 3.8.0
 **Public :** visiteurs, étudiants, candidats, personnel de SUP'COM
 
 ## Ce dont vous avez besoin
@@ -84,7 +84,7 @@ où vous en êtes (✓ = fait) ; touchez une étape pour l'ouvrir.
 | Élément | Signification |
 |---|---|
 | **RDC / 1 / 2 / 3 / Tous** | Étage affiché dans la vue 3D |
-| **3D / Campus / Plan** | Vue orbite de l'intérieur ; **Campus** (vue d'ouverture du site) : maquette extérieure de SUP'COM en plein jour (tours, aile vitrée, arche d'entrée, drapeaux, parvis) — toucher un étage, un lieu ou lancer un itinéraire revient à la vue 3D ; plan vu de dessus, nord en haut |
+| **3D / Campus / Plan** | **3D** : vue en coupe de l'étage choisi, en plein jour (salles, murs coupés, escaliers, ascenseurs vitrés, amphithéâtres avec gradins et sièges), « Tous » empile les étages ; **Campus** (vue d'ouverture du site) : maquette extérieure de SUP'COM en plein jour (tours, aile vitrée, arche d'entrée, drapeaux, parvis) — toucher un étage, un lieu ou lancer un itinéraire revient à la vue 3D ; plan vu de dessus, nord en haut |
 | Rose N / E / S / O | Boussole ; touchez-la pour l'activer, la lecture indique le cap (« NE 47° ») |
 | **GPS** | Position à l'extérieur des bâtiments |
 | **Relevé** | Mode équipe : nommer une salle, signaler une porte absente du plan |

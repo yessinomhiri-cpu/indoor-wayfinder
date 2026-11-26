@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-26
- * Version      : 3.7.1 (opens on the Campus view; daylight SUP'COM exterior; guidance UI, voice, journey bar; camera mode; guide arrow HUD; diagnostic AR WebGPU; SUP'COM campus – WebGPU, multi-floor, compass, GPS)
+ * Version      : 3.8.0 (daylight cut-away floors in 3D; opens on the Campus view; daylight SUP'COM exterior; guidance UI, voice, journey bar; camera mode; guide arrow HUD; diagnostic AR WebGPU; SUP'COM campus – WebGPU, multi-floor, compass, GPS)
  * Description  : Application controller and NavigationService facade: wires
  *                the QR scanner, the SUP'COM campus model and router, the
  *                WebGPU 3D view, immersive-ar guidance, compass, outdoor GPS,
@@ -27,7 +27,7 @@ import { Compass, GpsTracker, shortCardinal } from './geo.js';
 import { SurveyStore } from './survey.js';
 import { hasWebGPU } from './gpu.js';
 
-const APP_VERSION = '3.7.1';
+const APP_VERSION = '3.8.0';
 const CAMPUS_URL = 'assets/campus/supcom.json';
 const WALKING_SPEED = 1.2; // m/s
 
