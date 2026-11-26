@@ -22,6 +22,13 @@ Les salles (codes `A1-07`, `B2-05`…) s'impriment depuis
 [`docs/qr-codes.html`](../qr-codes.html), étage par étage. Alias acceptés :
 `ENTREE` → entrée principale, `HALL` → accueil.
 
+## Carte d'une salle
+
+Une carte prête est fournie pour **`A2-12`** (Local A2-12, étage 2, bloc A) :
+[`A2-12.png`](A2-12.png). Le payload est `A2-12` ; scanné dans l'application,
+il indique « Vous êtes ici : Local A2-12 ». Pour aller **vers** cette salle,
+choisissez-la ensuite comme destination.
+
 ## Démonstration conseillée
 
 1. Ouvrir <https://indoor-wayfinder-lyart.vercel.app> dans Chrome Android.
