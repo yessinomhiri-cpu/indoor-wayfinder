@@ -3,7 +3,7 @@
 **Projet :** Indoor Wayfinder — Navigation intérieure en réalité augmentée
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
-**Version :** 2.1 — Évaluation SUP'COM (2026/2027)
+**Version :** 2.2 — Évaluation SUP'COM (2026/2027)
 **Dernière mise à jour :** 26 novembre 2026
 
 ---
@@ -28,7 +28,13 @@ Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
     *   **Source originale :** Aucun modèle importé — murs, dalles, portes, escaliers, ascenseurs, bâtiments voisins, tube d'itinéraire, chevrons, balise, marqueurs GPS / position / cap, flèche du nord générés par code avec Three.js à partir de `assets/campus/supcom.json` ; étiquettes dessinées sur un canvas 2D
     *   **Auteur / Créateur :** Équipe Indoor Wayfinder
     *   **Licence :** Code du projet (projet académique SUP'COM)
-    *   **Modifications apportées par l'équipe :** Rendu WebGPU (`WebGPURenderer`), 4 niveaux empilés à 3,6 m, sélecteur d'étage, vue orbite et vue « Plan » nord en haut
+    *   **Modifications apportées par l'équipe :** Rendu WebGPU (`WebGPURenderer`), 4 niveaux empilés à 3,6 m, sélecteur d'étage, vue orbite et vue « Plan » nord en haut ; **vue Campus** (2026-11-26) avec tours, bandeaux de fenêtres allumés, place, palmiers et portail
+
+*   **Référence visuelle :** Modèle 3D du campus du site **Forum SUP'COM** — https://forum.supcom.tn/ (scène Three.js/WebGL visible sur la page d'accueil, consultée le 26 novembre 2026)
+    *   **Source originale :** Site Forum SUP'COM, section d'accueil ; aucun fichier de modèle, texture, code ou asset n'a été téléchargé ni copié
+    *   **Auteur / Créateur :** Forum SUP'COM / ses auteurs
+    *   **Licence :** Aucune licence explicite fournie ; **aucune réutilisation** de leur code, géométrie ou texture
+    *   **Modifications apportées par l'équipe :** Adaptation du **langage visuel** uniquement (tours circulaires, bandeaux de fenêtres, éclairage nocturne, place, palmiers, portail) avec des primitives Three.js originales, à partir des plans SUP'COM et d'OpenStreetMap déjà documentés ci-dessus
 
 *   **Asset :** Flèche de navigation AR, réticule et chevrons au sol (`createArrow()` et géométries dans `src/ar.js`)
     *   **Source originale :** Aucune URL externe — formes 2D (`THREE.Shape`) extrudées avec `ExtrudeGeometry` / `ShapeGeometry`, anneau `RingGeometry`
@@ -196,11 +202,11 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
 
 *   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
     *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, des données du campus et du build Three.js WebGPU), du manifeste et des icônes
-    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.5.1`, mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
+    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.6.0`, mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
 
 *   **Composant ou Shader concerné :** Documentation (`README.md`, `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`, `docs/design-notebook.md`, `docs/qr-codes/`, `ATTRIBUTION.md`, `CHANGELOG.md`)
     *   **Prompt ou usage principal :** Rédaction et mise à jour de la documentation technique, du manuel utilisateur, du design notebook UML, du guide téléphone, du README et des attributions
-    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 64 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.5.1
+    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 64 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.6.0
 
 ---
 

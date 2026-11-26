@@ -1,6 +1,6 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 3.5.1 — campus SUP'COM, WebGPU, guidage AR et mode caméra
+**Version :** 3.6.0 — campus SUP'COM, WebGPU, guidage AR, mode caméra et vue Campus
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
@@ -21,7 +21,7 @@ augmentée WebXR orienté par la boussole.
 | Localisation | QR (`getUserMedia` + `BarcodeDetector` / jsQR 1.4.0), GPS extérieur (Geolocation) |
 | Orientation | DeviceOrientation absolu (`deviceorientationabsolute`) |
 | Données | `assets/campus/supcom.json` généré par `scripts/build-campus.mjs` |
-| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.5.1` |
+| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.6.0` |
 | Hébergement | HTTPS : Vercel (actif) ; GitHub Pages (à activer par le propriétaire du dépôt, accès admin requis) |
 
 Aucune ligne du code de l'application ne crée de contexte WebGL : `src/gpu.js`
@@ -125,7 +125,11 @@ alias QR ou point `{ level, x, y }` (toucher sur le plan, GPS).
 intérieures, portes / escaliers / ascenseurs en traits, niveaux espacés de
 3,6 m, bâtiments OSM extrudés. Sélecteur RDC / 1 / 2 / 3 / Tous ; étages
 inférieurs atténués ; vue orbite (glisser, pincer, deux doigts = déplacer)
-ou vue « Plan » nord en haut. Itinéraire : tube par niveau, liaison verticale,
+ou vue « Plan » nord en haut. Le bouton **Campus** abaisse la caméra et cadre
+le bâtiment, la place, les palmiers et le portail : une vue extérieure
+adaptée du langage visuel du site Forum SUP'COM (tours circulaires, bandeaux
+de fenêtres allumés, couronnes, nuit), sans importer ni copier son modèle.
+Itinéraire : tube par niveau, liaison verticale,
 chevrons animés, balise de destination, marqueur de position et cap.
 
 ## 7. Réalité augmentée

@@ -1,6 +1,6 @@
 # Design notebook — Indoor Wayfinder
 
-**Version :** 3.5.1
+**Version :** 3.6.0
 **Mise à jour :** 26 novembre 2026
 **Cahier des charges :** v1.0 — 24 octobre 2026 (périmètre élargi à la demande du superviseur : campus SUP'COM complet, plusieurs étages, boussole, GPS extérieur, rendu WebGPU)
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
@@ -55,7 +55,7 @@ flowchart TB
         MAIN[src/main.js<br/>NavigationService : contrôleur + état]
         SCAN[src/scanner.js<br/>getUserMedia + QR]
         NAV[src/navigation.js<br/>CampusMap + CampusRouter Dijkstra]
-        VIEW[src/view3d.js<br/>campus 3D WebGPU]
+        VIEW[src/view3d.js<br/>campus 3D WebGPU + vue Campus]
         AR[src/ar.js<br/>immersive-ar sur WebGPU]
         GUIDE[src/ar-guidance.js<br/>localisation continue + guidage]
         GPU[src/gpu.js<br/>WebGPURenderer]
@@ -285,6 +285,7 @@ charges mais reste à activer par le propriétaire du dépôt (accès admin).
 | Boussole | cap téléphone debout nord/est, téléphone à plat ; filtre et déclinaison |
 | QR | 15 cartes décodées par l'application (`scanImage`) |
 | Vue 3D | WebGPU actif, 4 étages, sélecteur, vue Plan, toucher = position |
+| Vue Campus | caméra basse, tours, fenêtres, place, portail ; aucun asset externe chargé |
 | Voix | une annonce par virage (12 m puis 3 m), escalier et arrivée une fois, demi-tour au plus toutes les 8 s |
 | Diagnostic | verdicts `test-diagnostic.mjs` : HTTPS, WebGPU, WebXR, XRGPUBinding, caméra, boussole |
 | AR (téléphone) | Samsung S23, Chrome + ARCore + flag WebXR/WebGPU — **à valider** |
@@ -310,7 +311,7 @@ charges mais reste à activer par le propriétaire du dépôt (accès admin).
 | 3 | Destinations, itinéraire, distances | ✅ |
 | 4 | Session `immersive-ar`, hit test, flèche | ✅ code, 🟡 test S23 |
 | 5 | Campus SUP'COM réel, multi-étages, boussole, GPS, WebGPU | ✅ code, 🟡 relevé des noms sur place |
-| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.5.1 ; S23 + vidéo à faire |
+| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.6.0 ; S23 + vidéo à faire |
 
 ## 12. Livrables
 

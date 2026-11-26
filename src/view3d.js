@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
- * Modified     : 2026-11-18
- * Version      : 3.5.1 (SUP'COM campus in 3D, WebGPU, frame budget)
+ * Modified     : 2026-11-26
+ * Version      : 3.6.0 (Campus exterior view, SUP'COM campus in 3D, WebGPU, frame budget)
  * Description  : Real-time WebGPU view of the SUP'COM campus generated from
  *                assets/campus/supcom.json: the main building with its four
  *                floors (walls, doors, stairs, lifts from the SUP'COM plans),
@@ -71,6 +71,7 @@ export class CampusView3D {
     this.floorGroups = new Map();   // level → Group
     this.floorSlabs = [];           // pickable meshes
     this.labelSprites = [];         // { sprite, level, official }
+    this.blockShells = [];          // tower centres/radii for the exterior
     this.activeLevel = 0;
     this.showAllFloors = false;
     this.viewMode = '3d';
@@ -126,7 +127,9 @@ export class CampusView3D {
     this.scene.add(sun);
 
     this.#buildContext();
+    this.blockShells = this.#computeBlockShells();
     this.#buildFloors();
+    this.#buildExterior();
     this.#buildNorthArrow();
     this.setFloor(0);
     this.#bindPointerControls();
@@ -198,13 +201,19 @@ export class CampusView3D {
   /**
    * setViewMode
    * -----------
-   * @param {'3d'|'top'} mode – Orbit view or top view (north up).
+   * @param {'3d'|'top'|'campus'} mode – Orbit view, top view (north up), or
+   *        the low-angle campus exterior view.
    */
   setViewMode(mode) {
     this.viewMode = mode;
     if (mode === 'top') {
       this.goalElevation = MAX_ELEVATION;
       this.azimuth = 0;
+    } else if (mode === 'campus') {
+      this.goalElevation = 0.32;
+      this.azimuth = 0.18;
+      const centre = this.#siteCentre();
+      this.#frame(toWorld(centre.x, centre.y, 6), 115);
     } else {
       this.goalElevation = 0.95;
     }
@@ -435,6 +444,8 @@ export class CampusView3D {
         const facade = wallMesh(floor.facade, base, FACADE_HEIGHT, COLOR.facade, 0.55);
         group.add(facade);
       }
+      const towerWindows = this.#buildTowerWindows(floor.level, base);
+      if (towerWindows) group.add(towerWindows);
 
       // Doors, stairs and lifts as lines on the floor
       group.add(lineMesh(floor.doors || [], base + 0.03, COLOR.door));
@@ -456,6 +467,318 @@ export class CampusView3D {
       this.floorGroups.set(floor.level, group);
       this.scene.add(group);
     }
+  }
+
+  /** Centre of the three SUP'COM blocks, used by the plaza and landscaping. */
+  #siteCentre() {
+    const blocks = this.campus.data.blocks || [];
+    if (!blocks.length) return { x: 0, y: 0 };
+    const sum = blocks.reduce((acc, block) => {
+      acc.x += block.x;
+      acc.y += block.y;
+      return acc;
+    }, { x: 0, y: 0 });
+    return { x: sum.x / blocks.length, y: sum.y / blocks.length };
+  }
+
+  /**
+   * #computeBlockShells
+   * -------------------
+   * Estimates each circular block's outer radius from the ground-floor
+   * façade. The forum-style towers use it for the lit window bands and rims.
+   */
+  #computeBlockShells() {
+    const blocks = this.campus.data.blocks || [];
+    const floor = this.campus.getFloor(0);
+    if (!blocks.length) return [];
+    return blocks.map((block, index) => {
+      let min = Infinity;
+      let max = 0;
+      for (const part of floor.facade || []) {
+        for (let i = 0; i + 1 < part.length; i += 2) {
+          const x = part[i];
+          const y = part[i + 1];
+          let nearest = null;
+          let nearestDistance = Infinity;
+          for (const other of blocks) {
+            const distance = Math.hypot(x - other.x, y - other.y);
+            if (distance < nearestDistance) {
+              nearestDistance = distance;
+              nearest = other;
+            }
+          }
+          if (nearest !== block) continue;
+          const radius = Math.hypot(x - block.x, y - block.y);
+          if (radius < min) min = radius;
+          if (radius > max) max = radius;
+        }
+      }
+      const estimated = Number.isFinite(min) ? (min + max) / 2 : 29;
+      return { ...block, index, radius: THREE.MathUtils.clamp(estimated, 24, 36) };
+    });
+  }
+
+  /** Lit window bands on each circular tower, generated per floor. */
+  #buildTowerWindows(level, base) {
+    if (!this.blockShells.length) return null;
+    const positions = [];
+    const colors = [];
+    const color = new THREE.Color();
+    const perTower = 20;
+
+    for (const tower of this.blockShells) {
+      const width = Math.max(1.2, (2 * Math.PI * tower.radius / perTower) * 0.54);
+      for (let i = 0; i < perTower; i += 1) {
+        const angle = (i / perTower) * Math.PI * 2 + tower.index * 0.37;
+        const radius = tower.radius + 0.3;
+        const cx = tower.x + Math.cos(angle) * radius;
+        const cz = -(tower.y + Math.sin(angle) * radius);
+        const tx = -Math.sin(angle);
+        const tz = -Math.cos(angle);
+        const y0 = base + 1.05;
+        const y1 = base + 2.4;
+        const half = width / 2;
+        const point = (offset, y) => [cx + tx * offset, y, cz + tz * offset];
+        const a = point(-half, y0);
+        const b = point(half, y0);
+        const c = point(half, y1);
+        const d = point(-half, y1);
+        positions.push(...a, ...b, ...c, ...a, ...c, ...d);
+
+        const lit = (tower.index * 7 + level * 11 + i * 5) % 19;
+        color.setHex(lit % 8 === 0 ? 0xffd79a : lit % 13 === 0 ? 0x66b7ff : 0x9bd6ff);
+        color.multiplyScalar(0.72 + ((lit * 7) % 4) * 0.08);
+        for (let vertex = 0; vertex < 6; vertex += 1) colors.push(color.r, color.g, color.b);
+      }
+    }
+
+    if (!positions.length) return null;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const material = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.82,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.baseOpacity = 0.82;
+    mesh.renderOrder = 1;
+    return mesh;
+  }
+
+  /** Night plaza, tower rims and landscaping adapted from the SUP'COM forum. */
+  #buildExterior() {
+    const group = new THREE.Group();
+    group.name = 'campusExterior';
+    this.#buildPlaza(group);
+    this.#buildTowerRims(group);
+    this.#buildPalms(group);
+    this.#buildLamps(group);
+    this.#buildGate(group);
+    this.#buildStars(group);
+    this.scene.add(group);
+  }
+
+  #buildPlaza(group) {
+    const centre = this.#siteCentre();
+    const plaza = new THREE.Mesh(
+      new THREE.RingGeometry(90, 150, 96).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x0d1a2f, transparent: true, opacity: 0.52, depthWrite: false })
+    );
+    plaza.position.copy(toWorld(centre.x, centre.y, 0.015));
+    group.add(plaza);
+
+    const border = new THREE.Mesh(
+      new THREE.RingGeometry(148, 150, 96).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x3a659b, transparent: true, opacity: 0.42, depthWrite: false })
+    );
+    border.position.copy(toWorld(centre.x, centre.y, 0.02));
+    group.add(border);
+
+    const radial = [];
+    for (let i = 0; i < 24; i += 1) {
+      const angle = (i / 24) * Math.PI * 2;
+      const inner = toWorld(centre.x + Math.cos(angle) * 90, centre.y + Math.sin(angle) * 90, 0.03);
+      const outer = toWorld(centre.x + Math.cos(angle) * 150, centre.y + Math.sin(angle) * 150, 0.03);
+      radial.push(inner, outer);
+    }
+    group.add(new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(radial),
+      new THREE.LineBasicMaterial({ color: 0x24446e, transparent: true, opacity: 0.5 })
+    ));
+  }
+
+  #buildTowerRims(group) {
+    const top = this.campus.levels.length * this.campus.floorHeight;
+    const ribMaterial = new THREE.LineBasicMaterial({ color: 0xa8caef, transparent: true, opacity: 0.26 });
+    const bandMaterial = new THREE.MeshBasicMaterial({ color: 0x9ec5ee, transparent: true, opacity: 0.2 });
+    const crownMaterial = new THREE.MeshStandardMaterial({
+      color: 0xbcd6f0,
+      emissive: 0x244e78,
+      emissiveIntensity: 0.55,
+      metalness: 0.35,
+      roughness: 0.35
+    });
+
+    for (const tower of this.blockShells) {
+      const ribs = [];
+      for (let i = 0; i < 24; i += 1) {
+        const angle = (i / 24) * Math.PI * 2 + tower.index * 0.37;
+        const radius = tower.radius + 0.07;
+        const x = tower.x + Math.cos(angle) * radius;
+        const z = -(tower.y + Math.sin(angle) * radius);
+        ribs.push(new THREE.Vector3(x, 0.2, z), new THREE.Vector3(x, top, z));
+      }
+      group.add(new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(ribs),
+        ribMaterial
+      ));
+
+      for (let level = 0; level <= this.campus.levels.length; level += 1) {
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(tower.radius, 0.1, 4, 48).rotateX(Math.PI / 2),
+          bandMaterial
+        );
+        ring.position.copy(toWorld(tower.x, tower.y, Math.min(level * this.campus.floorHeight, top)));
+        group.add(ring);
+      }
+
+      const crown = new THREE.Mesh(
+        new THREE.TorusGeometry(tower.radius + 0.05, 0.28, 6, 64).rotateX(Math.PI / 2),
+        crownMaterial
+      );
+      crown.position.copy(toWorld(tower.x, tower.y, top + 0.12));
+      group.add(crown);
+    }
+  }
+
+  #buildPalms(group) {
+    const centre = this.#siteCentre();
+    const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x6a523b, roughness: 0.95 });
+    const leafMaterial = new THREE.MeshBasicMaterial({
+      color: 0x3aa374,
+      side: THREE.DoubleSide,
+      toneMapped: false
+    });
+
+    const addPalm = (x, y, height) => {
+      const palm = new THREE.Group();
+      palm.position.copy(toWorld(x, y, 0));
+
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.68, height, 6), trunkMaterial);
+      trunk.position.y = height / 2;
+      palm.add(trunk);
+
+      const crown = new THREE.Group();
+      crown.position.y = height;
+      for (let i = 0; i < 8; i += 1) {
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.1, 4.8), leafMaterial);
+        leaf.geometry.translate(0, 0, 2.4);
+        leaf.rotation.y = (i / 8) * Math.PI * 2;
+        leaf.rotation.x = -0.26;
+        crown.add(leaf);
+      }
+      palm.add(crown);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.6, 7, 5), trunkMaterial);
+      cap.position.y = height;
+      palm.add(cap);
+      group.add(palm);
+    };
+
+    const angles = [-1.25, -0.55, 0.15, 0.9, 2.75, 4.15];
+    angles.forEach((angle, index) => {
+      const radius = 80 + (index % 2) * 6;
+      addPalm(
+        centre.x + Math.cos(angle) * radius,
+        centre.y + Math.sin(angle) * radius,
+        10.5 + (index % 3) * 0.7
+      );
+    });
+    addPalm(centre.x - 38, centre.y - 88, 12);
+    addPalm(centre.x + 38, centre.y - 88, 12);
+  }
+
+  #buildLamps(group) {
+    const centre = this.#siteCentre();
+    const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x263549, roughness: 0.6, metalness: 0.4 });
+    const bulbMaterial = new THREE.MeshBasicMaterial({ color: 0xffd28a, toneMapped: false });
+
+    for (let i = 0; i < 6; i += 1) {
+      const angle = (i / 6) * Math.PI * 2 + 0.26;
+      const lamp = new THREE.Group();
+      lamp.position.copy(toWorld(
+        centre.x + Math.cos(angle) * 82,
+        centre.y + Math.sin(angle) * 82,
+        0
+      ));
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.16, 5.8, 5), poleMaterial);
+      pole.position.y = 2.9;
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.46, 8, 6), bulbMaterial);
+      bulb.position.y = 5.95;
+      lamp.add(pole, bulb);
+      group.add(lamp);
+    }
+  }
+
+  #buildGate(group) {
+    const centre = this.#siteCentre();
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x8db4dc,
+      emissive: 0x1e3e63,
+      emissiveIntensity: 0.5,
+      roughness: 0.4,
+      metalness: 0.4
+    });
+    const gate = new THREE.Group();
+    gate.position.copy(toWorld(centre.x, centre.y - 92, 0));
+
+    for (const offset of [-8, 8]) {
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 8, 1.2), material);
+      pillar.position.set(offset, 4, 0);
+      gate.add(pillar);
+    }
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(17, 1.1, 1.2), material);
+    beam.position.y = 8.2;
+    gate.add(beam);
+
+    const sign = createLabelSprite("SUP'COM", { scale: 6.5, accent: true });
+    sign.position.y = 10.4;
+    gate.add(sign);
+
+    const walkway = new THREE.Mesh(
+      new THREE.PlaneGeometry(6, 34).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x1b2f4c, transparent: true, opacity: 0.65, depthWrite: false })
+    );
+    walkway.position.set(0, 0.025, -17);
+    gate.add(walkway);
+    group.add(gate);
+  }
+
+  #buildStars(group) {
+    const positions = [];
+    for (let i = 0; i < 260; i += 1) {
+      const angle = i * 2.3999632297;
+      const height = 0.08 + ((i * 37) % 100) / 100 * 0.82;
+      const radius = Math.sqrt(1 - height * height) * 540;
+      positions.push(Math.cos(angle) * radius, height * 540, Math.sin(angle) * radius);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const points = new THREE.Points(geometry, new THREE.PointsMaterial({
+      color: 0xdbeafe,
+      size: 1.6,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+      fog: false
+    }));
+    points.frustumCulled = false;
+    group.add(points);
   }
 
   #connectorServes(connectorId, level) {

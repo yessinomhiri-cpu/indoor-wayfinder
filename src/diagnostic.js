@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-17
- * Modified     : 2026-11-17
- * Version      : 3.2.0 (WebGPU AR readiness diagnostic)
+ * Modified     : 2026-11-26
+ * Version      : 3.6.0 (WebGPU AR readiness diagnostic)
  * Description  : Checks, on the demo phone itself, every link of the WebGPU
  *                AR chain used by the app:
  *                HTTPS → Chrome Android → WebGPU adapter (xrCompatible) →
@@ -24,7 +24,7 @@
  * ==========================================================================
  */
 
-export const APP_VERSION = '3.2.0';
+export const APP_VERSION = '3.6.0';
 
 /** Check outcomes. */
 export const STATUS = Object.freeze({

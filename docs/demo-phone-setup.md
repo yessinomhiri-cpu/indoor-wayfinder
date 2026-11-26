@@ -1,6 +1,6 @@
 # Préparer le téléphone de démo (AR WebGPU)
 
-**Version :** 3.5.1 · **Public :** l'équipe, avant chaque test terrain et avant la soutenance
+**Version :** 3.6.0 · **Public :** l'équipe, avant chaque test terrain et avant la soutenance
 
 L'AR de l'application est rendue en **WebGPU** (exigence du superviseur) :
 la session `immersive-ar` est demandée avec la fonctionnalité `webgpu`, et

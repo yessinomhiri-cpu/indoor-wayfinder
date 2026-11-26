@@ -11,8 +11,8 @@
 | **Brief** | Cahier des charges v1.0 — 24 October 2026 (scope extended by the supervisor: whole SUP'COM building, floors, compass, GPS, WebGPU) |
 | **Repository** | [github.com/yessinomhiri-cpu/indoor-wayfinder](https://github.com/yessinomhiri-cpu/indoor-wayfinder) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Demo phone setup](docs/demo-phone-setup.md) · [Design notebook](docs/design-notebook.md) · [Changelog](CHANGELOG.md) · [Attribution](ATTRIBUTION.md) |
-| **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — v3.5.1, deployed 26 Nov 2026 |
-| **App version** | `v3.5.1` |
+| **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — v3.6.0, deployed 26 Nov 2026 |
+| **App version** | `v3.6.0` |
 | **Last updated** | 2026-11-26 |
 
 ---
@@ -35,7 +35,7 @@ The bar **① Scanner → ② Destination → ③ Guidage** at the bottom of the
 2. **Every room, every floor.** 233 rooms are detected automatically, each with a stable code (`A1-07`). The four amphitheatres, the reception, the *bureau d'ordre* and the *buvette* carry their official names. The **Relevé** (survey) mode lets the team type in the names written on the doors.
 3. **Where am I?** Scan a QR code, pick a start point in the list, tap the plan, or use GPS outdoors.
 4. **Route.** Dijkstra on a 25 cm walkable grid covering the four floors; stairs and lifts connect them, and the *Sans escaliers* strategy uses lifts only. French steps with compass directions (« Marchez 22 m vers le Sud-Ouest »).
-5. **3D map (WebGPU).** Four stacked floors, floor selector, plan view (north up), animated route, destination beacon, position and heading. A frame budget keeps the GPU almost idle when nothing moves.
+5. **3D map (WebGPU).** Four stacked floors, floor selector, plan view (north up), animated route, destination beacon, position and heading. A frame budget keeps the GPU almost idle when nothing moves. **Campus** adds a low-angle exterior view adapted from the SUP'COM Forum visual language: three circular towers with lit window bands, tower rims, a night plaza, palms, lamps and the SUP'COM entrance gate.
 6. **Two guidance modes, one button.**
    - **AR mode (WebXR on WebGPU)** — the QR scan fixes the start, ARCore tracks every step, and the walked path is **map-matched to the real walls**. Chevrons flow on the floor, real walls hide the guidance behind them, the route is recalculated when you leave it, floors change on the stairs. If ARCore finds no floor after 3 s, the guidance continues at an estimated floor height and a tap places the arrow 1.5 m ahead.
    - **Camera mode (any Android phone)** — no ARCore and no Chrome flag needed. The camera image fills the screen and the 3D arrow is drawn on top; the **compass** turns it towards the route and the **step counter** moves you along the route (0.7 m per step). At the stairs, « Je suis à l'étage N » continues on the next floor. If the AR session is refused, the app switches to this mode by itself.

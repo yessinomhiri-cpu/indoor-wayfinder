@@ -1,6 +1,6 @@
 # Manuel utilisateur — Indoor Wayfinder
 
-**Version :** 3.5.1
+**Version :** 3.6.0
 **Public :** visiteurs, étudiants, candidats, personnel de SUP'COM
 
 ## Ce dont vous avez besoin
@@ -84,7 +84,7 @@ où vous en êtes (✓ = fait) ; touchez une étape pour l'ouvrir.
 | Élément | Signification |
 |---|---|
 | **RDC / 1 / 2 / 3 / Tous** | Étage affiché dans la vue 3D |
-| **3D / Plan** | Vue orbite ou plan vu de dessus, nord en haut |
+| **3D / Campus / Plan** | Vue orbite, vue extérieure basse (tours, place, portail), ou plan vu de dessus, nord en haut |
 | Rose N / E / S / O | Boussole ; touchez-la pour l'activer, la lecture indique le cap (« NE 47° ») |
 | **GPS** | Position à l'extérieur des bâtiments |
 | **Relevé** | Mode équipe : nommer une salle, signaler une porte absente du plan |

@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
- * Modified     : 2026-11-18
- * Version      : 3.5.1 (guidance UI, voice, journey bar; camera mode; guide arrow HUD; diagnostic AR WebGPU; SUP'COM campus – WebGPU, multi-floor, compass, GPS)
+ * Modified     : 2026-11-26
+ * Version      : 3.6.0 (Campus exterior view; guidance UI, voice, journey bar; camera mode; guide arrow HUD; diagnostic AR WebGPU; SUP'COM campus – WebGPU, multi-floor, compass, GPS)
  * Description  : Application controller and NavigationService facade: wires
  *                the QR scanner, the SUP'COM campus model and router, the
  *                WebGPU 3D view, immersive-ar guidance, compass, outdoor GPS,
@@ -27,7 +27,7 @@ import { Compass, GpsTracker, shortCardinal } from './geo.js';
 import { SurveyStore } from './survey.js';
 import { hasWebGPU } from './gpu.js';
 
-const APP_VERSION = '3.5.1';
+const APP_VERSION = '3.6.0';
 const CAMPUS_URL = 'assets/campus/supcom.json';
 const WALKING_SPEED = 1.2; // m/s
 
@@ -46,6 +46,7 @@ const mapHintElement = $('map-hint');
 const mapEyebrowElement = $('map-eyebrow');
 const floorTabsElement = $('floor-tabs');
 const view3dButton = $('btn-view-3d');
+const viewCampusButton = $('btn-view-campus');
 const viewTopButton = $('btn-view-top');
 const gpsButton = $('btn-gps');
 const surveyButton = $('btn-survey');
@@ -1455,12 +1456,23 @@ function initUIEventListeners() {
     if (!view) return;
     view.setViewMode('3d');
     view3dButton.setAttribute('aria-pressed', 'true');
+    viewCampusButton.setAttribute('aria-pressed', 'false');
+    viewTopButton.setAttribute('aria-pressed', 'false');
+  });
+  viewCampusButton.addEventListener('click', () => {
+    if (!view) return;
+    view.setFloor('all');
+    updateFloorTabs();
+    view.setViewMode('campus');
+    view3dButton.setAttribute('aria-pressed', 'false');
+    viewCampusButton.setAttribute('aria-pressed', 'true');
     viewTopButton.setAttribute('aria-pressed', 'false');
   });
   viewTopButton.addEventListener('click', () => {
     if (!view) return;
     view.setViewMode('top');
     view3dButton.setAttribute('aria-pressed', 'false');
+    viewCampusButton.setAttribute('aria-pressed', 'false');
     viewTopButton.setAttribute('aria-pressed', 'true');
   });
   gpsButton.addEventListener('click', toggleGps);

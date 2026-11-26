@@ -3,6 +3,30 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.6.0] - 2026-11-26
+
+**Campus exterior view, adapted from the SUP'COM Forum 3D visual language.**
+
+### Added
+
+- **Campus view button** (`3D / Campus / Plan`) in the WebGPU map toolbar.
+  It lowers the camera and frames the whole building with the new exterior
+  layer.
+- **Exterior layer** around the real three-block plan: lit façade window
+  bands on the three circular towers, tower rims, a night plaza with radial
+  paving, palms, lamp posts and a SUP'COM entrance gate. Everything is
+  generated from the existing campus JSON and Three.js primitives; no GLB or
+  external asset is loaded.
+- The visual language is adapted from the public Forum SUP'COM 3D campus
+  (`https://forum.supcom.tn`); no model, texture or source code was copied.
+  The reference is recorded in `ATTRIBUTION.md`.
+
+### Verified
+
+- Chrome with WebGPU: default 3D map, **Campus** view, route and floor
+  controls render without console errors; 64/64 Node tests still pass.
+- Cache bumped to `v3.6.0` so installed PWAs receive the new `view3d.js`.
+
 ## [3.5.1] - 2026-11-18
 
 ### Fixed
