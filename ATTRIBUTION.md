@@ -3,8 +3,8 @@
 **Projet :** Indoor Wayfinder — Navigation intérieure en réalité augmentée
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
-**Version :** 2.0 — Évaluation SUP'COM (2026/2027)
-**Dernière mise à jour :** 12 novembre 2026
+**Version :** 2.1 — Évaluation SUP'COM (2026/2027)
+**Dernière mise à jour :** 26 novembre 2026
 
 ---
 
@@ -60,6 +60,12 @@ Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
     *   **Licence :** Licences système/navigateur ; aucune police web n'est redistribuée
     *   **Modifications apportées par l'équipe :** Aucune police téléchargée ni modifiée
 
+*   **Asset :** Voix de guidage (français)
+    *   **Source originale :** Aucun fichier audio importé — synthèse vocale locale du navigateur via `speechSynthesis` / `SpeechSynthesisUtterance`, voix fr-FR
+    *   **Auteur / Créateur :** Fournisseur du système/navigateur (voix installée sur le téléphone) ; textes des consignes écrits par l'équipe
+    *   **Licence :** Aucune piste audio redistribuée ; la voix est fournie par le système de l'utilisateur
+    *   **Modifications apportées par l'équipe :** Choix de la langue fr-FR, textes (« Dans 10 mètres, tournez à gauche »…), coupure 🔊/🔇 mémorisée ; aucun enregistrement humain
+
 *   **Asset :** QR codes des lieux de SUP'COM (`docs/qr-codes/*.png`, `docs/qr-codes/full-sheet.png`)
     *   **Source originale :** Aucune URL externe — images générées localement par l'équipe avec la bibliothèque Python `qrcode` et Pillow ; chaque QR encode l'identifiant d'un lieu de `assets/campus/supcom.json`
     *   **Auteur / Créateur :** Équipe Indoor Wayfinder
@@ -80,23 +86,26 @@ Rappel : L'usage des versions "latest" depuis les CDN est proscrit.
 
 *   **Bibliothèque :** Three.js — build WebGPU (`three.webgpu.js`, avec ses modules `three.core.js` et `three.tsl.js`)
     *   **Version fixée :** 0.187.0 (r187, 30 octobre 2026)
+    *   **Licence :** MIT — https://github.com/mrdoob/three.js/blob/dev/LICENSE
     *   **Lien CDN de référence :** https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.webgpu.js
     *   **Rôle dans le projet :** Moteur 3D, rendu exclusivement par `WebGPURenderer` sur le backend WebGPU : vue 3D du campus (`src/view3d.js`) et session WebXR `immersive-ar` rendue via `XRGPUBinding` (`src/ar.js`) ; création contrôlée dans `src/gpu.js` (aucun renderer créé sans adaptateur WebGPU)
 
 *   **Bibliothèque :** Three.js addons (import map)
     *   **Version fixée :** 0.187.0 (r187)
+    *   **Licence :** MIT (même dépôt Three.js)
     *   **Lien CDN de référence :** https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/
     *   **Rôle dans le projet :** Chemin d'import réservé aux modules complémentaires Three.js ; aucun addon n'est utilisé à ce jour
 
 *   **Bibliothèque :** jsQR
     *   **Version fixée :** 1.4.0
+    *   **Licence :** Apache-2.0 — https://github.com/cozmo/jsQR/blob/master/LICENSE
     *   **Lien CDN de référence :** https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm
     *   **Rôle dans le projet :** Décodage des QR codes lorsque `BarcodeDetector` n'est pas disponible ; chargé dynamiquement dans `src/scanner.js`, mis en cache par `sw.js`
 
 *   **Bibliothèque :** API natives du navigateur (aucune bibliothèque tierce)
     *   **Version fixée :** APIs standard du navigateur (pas de version CDN)
     *   **Lien CDN de référence :** Sans objet
-    *   **Rôle dans le projet :** WebGPU (`navigator.gpu`), WebXR Device API (`immersive-ar`, hit test, ancres, DOM overlay, liaison WebXR/WebGPU `XRGPUBinding`), DeviceOrientation (boussole), Geolocation (GPS extérieur), `getUserMedia` (caméra arrière), `BarcodeDetector`, Vibration API, Screen Wake Lock, Service Worker / Cache API, localStorage (mode relevé)
+    *   **Rôle dans le projet :** WebGPU (`navigator.gpu`), WebXR Device API (`immersive-ar`, hit test, ancres, DOM overlay, liaison WebXR/WebGPU `XRGPUBinding`), DeviceOrientation (boussole), DeviceMotion (podomètre du mode caméra), Web Speech API / `speechSynthesis` (voix fr-FR), Geolocation (GPS extérieur), `getUserMedia` (caméra arrière), `BarcodeDetector`, Vibration API, Screen Wake Lock, Service Worker / Cache API, localStorage (mode relevé)
 
 *   **Outil de génération (non distribué) :** Node.js 24 (`scripts/build-campus.mjs`, `fetch` natif), Python `qrcode` + Pillow (cartes QR)
     *   **Version fixée :** Node.js 24.18 ; `qrcode` et Pillow 12.3 (poste de l'équipe)
@@ -146,12 +155,12 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
     *   **Axe de vérification appliqué par l'étudiant :** Relecture de l'équipe, rendu dans Chrome desktop/mobile (375 × 812), parcours clavier (Tab/Escape), contraste AA, validation du manifest
 
 *   **Composant ou Shader concerné :** Scanner caméra et QR (`src/scanner.js`)
-    *   **Prompt ou usage principal :** Implémentation de `getUserMedia`, de `BarcodeDetector`, du fallback jsQR, de la boucle de détection et de la libération caméra
-    *   **Axe de vérification appliqué par l'étudiant :** Décodage des 15 QR SUP'COM par `scanImage` (jsQR), libération des pistes, test Android réel encore à faire
+    *   **Prompt ou usage principal :** Implémentation de `getUserMedia`, de `BarcodeDetector`, du fallback jsQR, de la boucle de détection et de la libération caméra ; v3.5.1 : causes d'échec réelles (caméra bloquée / occupée / absente / image vide), réglages simplifiés, jsQR chargé en parallèle
+    *   **Axe de vérification appliqué par l'étudiant :** Décodage des 15 QR SUP'COM par `scanImage` (jsQR), libération des pistes, 3 tests caméra (64 au total), caméra factice dans Chrome (QR lu, refus, occupation, réglages stricts) ; test Android réel encore à faire
 
 *   **Composant ou Shader concerné :** Analyse de SupNav et import du campus (`scripts/build-campus.mjs`, `assets/campus/supcom.json`, `assets/campus/corrections.json`)
     *   **Prompt ou usage principal :** Claude (Anthropic) : analyse du bundle de https://supnav.supcom.tn (React + ArcGIS ; service `supws` en erreur 400, d'où « Error importing Data »), découverte de la couche publique ArcGIS des plans SUP'COM, décodage des types de traits (murs, portes, escaliers, ascenseurs, façade, poteaux), import, grille de circulation, détection des salles et connecteurs, corrections relevées
-    *   **Axe de vérification appliqué par l'étudiant :** Rendus PNG de chaque étage comparés aux plans ; 4 amphithéâtres détectés à ≈ 310 m² chacun ; 233 salles ; 25 locaux sans porte sur le plan signalés « accès à confirmer » au lieu d'un passage inventé ; 13 tests Node
+    *   **Axe de vérification appliqué par l'étudiant :** Rendus PNG de chaque étage comparés aux plans ; 4 amphithéâtres détectés à ≈ 310 m² chacun ; 233 salles ; 25 locaux sans porte sur le plan signalés « accès à confirmer » au lieu d'un passage inventé ; 13 tests campus (64 au total)
 
 *   **Composant ou Shader concerné :** Routage multi-étages (`src/navigation.js` — `CampusMap`, `CampusRouter`, stratégies, étapes)
     *   **Prompt ou usage principal :** Claude (Anthropic) : Dijkstra sur la grille de tous les étages (tas binaire, heuristique A* optionnelle), arêtes verticales escaliers/ascenseurs, stratégies « plus court » / « sans escaliers », lissage, consignes en français avec caps (Nord, Sud-Ouest…), distances depuis un point en une passe
@@ -169,6 +178,14 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
     *   **Prompt ou usage principal :** Claude (Anthropic) : localisation continue pendant la session AR (départ QR + suivi ARCore + boussole), recalage par correspondance cartographique sur les murs et l'itinéraire (recherche globale de l'angle et de la translation, champs de distance), suivi des étages, consignes pas à pas, détection de sortie d'itinéraire et recalcul, chevrons au sol, flèches de virage, murs occultants invisibles, HUD et mini-carte
     *   **Axe de vérification appliqué par l'étudiant :** 12 marches simulées sur les vrais plans (angle AR inconnu, boussole faussée de ±15°) : erreur moyenne < 0,6 m, alignement à moins de 3°, arrivée détectée ; dans l'application (WebGPU + simulateur WebXR) : Entrée → Amphi Ibn Khaldoun 55 m, erreur moyenne 0,64 m, angle 40,2° pour 40° réel ; Entrée → A3-18 par l'escalier, étages 0→3 suivis, erreur max 1,3 m ; demi-tour et recalcul vérifiés ; **essai réel dans SUP'COM sur le S23 encore requis**
 
+*   **Composant ou Shader concerné :** Mode caméra, carte de guidage et voix (`src/camera-guide.js`, `src/route-follower.js`, `src/nav-format.js`, `src/voice.js`)
+    *   **Prompt ou usage principal :** Claude (Anthropic) : caméra arrière en plein écran avec canvas WebGPU transparent, flèche 3D orientée par la boussole et le tangage, podomètre `DeviceMotion` (0,7 m par pas, seuils de direction), changement d'étage confirmé, carte de guidage (icône, distance, action, progression), décision des annonces vocales et synthèse `speechSynthesis` fr-FR
+    *   **Axe de vérification appliqué par l'étudiant :** `test-camera-guide.mjs` (pas, secousses, marche Entrée → Amphi IBN KHALDOUN, escalier étage 3) et `test-guidance.mjs` (voix) : 64 tests au total ; parcours clavier dans Chrome avec webcam ; **marche réelle, voix et vibrations sur le S23 encore à valider**
+
+*   **Composant ou Shader concerné :** Diagnostic AR WebGPU (`diagnostic.html`, `src/diagnostic.js`, `scripts/test-diagnostic.mjs`)
+    *   **Prompt ou usage principal :** Claude (Anthropic) : page de diagnostic qui vérifie HTTPS, Chrome Android, adaptateur WebGPU, device GPU, WebXR, ARCore, `XRGPUBinding`, caméra, `BarcodeDetector`, boussole, Wake Lock, vibration, Service Worker et cache ; test AR réel de 20 s et rapport copiable
+    *   **Axe de vérification appliqué par l'étudiant :** Tests Node des verdicts ; page ouverte dans Chrome desktop (les deux blocages ARCore/flag sont affichés avec leur correctif) ; **rapport sur le S23 encore à produire**
+
 *   **Composant ou Shader concerné :** Mode relevé (`src/survey.js`, `src/main.js` — `handleSurveyPick`, `saveSurveyName`)
     *   **Prompt ou usage principal :** Claude (Anthropic) : nommage des salles depuis le plan, passages manquants, annulation (patron Command), export `corrections.json` réinjecté par le script d'import
     *   **Axe de vérification appliqué par l'étudiant :** Touché sur l'amphithéâtre A0-35 → sélection correcte ; nom enregistré, retrouvé par la recherche, annulé ; export JSON
@@ -179,11 +196,11 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
 
 *   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
     *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, des données du campus et du build Three.js WebGPU), du manifeste et des icônes
-    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.0.0`, mise à jour d'une version précédente sans boucle de rechargement, vérification JSON du manifeste
+    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.5.1`, mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
 
-*   **Composant ou Shader concerné :** Documentation (`README.md`, `docs/technical.md`, `docs/user-manual.md`, `docs/design-notebook.md`, `docs/qr-codes/`)
-    *   **Prompt ou usage principal :** Rédaction et mise à jour de la documentation technique, du manuel utilisateur, du design notebook UML et du README
-    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les tests et le cahier des charges ; liens vérifiés
+*   **Composant ou Shader concerné :** Documentation (`README.md`, `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`, `docs/design-notebook.md`, `docs/qr-codes/`, `ATTRIBUTION.md`, `CHANGELOG.md`)
+    *   **Prompt ou usage principal :** Rédaction et mise à jour de la documentation technique, du manuel utilisateur, du design notebook UML, du guide téléphone, du README et des attributions
+    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 64 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.5.1
 
 ---
 

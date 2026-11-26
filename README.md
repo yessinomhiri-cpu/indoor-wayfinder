@@ -11,9 +11,9 @@
 | **Brief** | Cahier des charges v1.0 — 24 October 2026 (scope extended by the supervisor: whole SUP'COM building, floors, compass, GPS, WebGPU) |
 | **Repository** | [github.com/yessinomhiri-cpu/indoor-wayfinder](https://github.com/yessinomhiri-cpu/indoor-wayfinder) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Demo phone setup](docs/demo-phone-setup.md) · [Design notebook](docs/design-notebook.md) · [Changelog](CHANGELOG.md) · [Attribution](ATTRIBUTION.md) |
-| **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) (redeploy to get the latest version) |
+| **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — v3.5.1, deployed 26 Nov 2026 |
 | **App version** | `v3.5.1` |
-| **Last updated** | 2026-11-18 |
+| **Last updated** | 2026-11-26 |
 
 ---
 

@@ -1,6 +1,7 @@
 # Design notebook — Indoor Wayfinder
 
-**Version :** 3.1.0
+**Version :** 3.5.1
+**Mise à jour :** 26 novembre 2026
 **Cahier des charges :** v1.0 — 24 octobre 2026 (périmètre élargi à la demande du superviseur : campus SUP'COM complet, plusieurs étages, boussole, GPS extérieur, rendu WebGPU)
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 
@@ -60,6 +61,10 @@ flowchart TB
         GPU[src/gpu.js<br/>WebGPURenderer]
         GEO[src/geo.js<br/>Boussole + GPS]
         SURVEY[src/survey.js<br/>mode relevé]
+        CAM[src/camera-guide.js<br/>mode caméra sans AR]
+        CARD[src/nav-format.js<br/>carte de guidage]
+        VOICE[src/voice.js<br/>annonces fr-FR]
+        DIAG[diagnostic.html<br/>diagnostic AR WebGPU]
         SW[sw.js<br/>cache hors ligne]
     end
     CDN[jsDelivr<br/>Three.js r187 WebGPU + jsQR]
@@ -78,6 +83,15 @@ flowchart TB
     MAIN --> AR
     MAIN --> GEO
     MAIN --> SURVEY
+    MAIN --> CAM
+    MAIN --> CARD
+    MAIN --> VOICE
+    CAM --> GPU
+    CAM --> GEO
+    CAM --> CARD
+    GUIDE --> CARD
+    DIAG --> GPU
+    DIAG --> XR
     VIEW --> GPU
     AR --> GPU
     AR --> XR
@@ -91,7 +105,7 @@ flowchart TB
     SW -.-> UI
 ```
 
-## 4. Séquence — du scan à la flèche orientée
+## 4. Séquence — du scan à la flèche orientée (AR ou caméra)
 
 ```mermaid
 sequenceDiagram
@@ -102,7 +116,9 @@ sequenceDiagram
     participant Router as CampusRouter
     participant View as CampusView3D
     participant AR as ARGuide
+    participant Camera as CameraGuide
     participant Compass
+    participant Voice as VoiceAnnouncer
     participant WebXR
 
     Visiteur->>UI: SCANNER
@@ -114,17 +130,25 @@ sequenceDiagram
     Router-->>Main: legs RDC + E3, escalier Bloc A, 71 m, étapes
     Main->>View: setState(position, destination, route)
     View-->>Visiteur: tube cyan + chevrons + balise (WebGPU)
-    Visiteur->>UI: Guidage AR (toucher)
-    Main->>AR: start(route, position)
-    AR->>WebXR: requestSession('immersive-ar', webgpu + hit-test)
-    WebXR-->>AR: XRFrame (XRGPUBinding)
-    Compass-->>AR: cap vrai de la caméra (a priori)
-    loop chaque image
-        WebXR-->>AR: pose caméra ARCore (6 DoF)
-        AR->>AR: ARGuidance : position sur le plan, recalage sur les murs
-        AR-->>Visiteur: chevrons sur 25 m, flèches de virage, HUD « Dans 6 m, tournez à gauche »
+    Visiteur->>UI: Démarrer le guidage
+    Main->>Voice: première consigne
+    alt AR disponible sur le téléphone
+        Main->>AR: start(route, position)
+        AR->>WebXR: requestSession('immersive-ar', webgpu + hit-test)
+        WebXR-->>AR: XRFrame (XRGPUBinding)
+        Compass-->>AR: cap vrai de la caméra (a priori)
+        loop chaque image
+            WebXR-->>AR: pose caméra ARCore (6 DoF)
+            AR->>AR: ARGuidance : position sur le plan, recalage sur les murs
+            AR-->>Visiteur: chevrons au sol, flèche 3D, HUD, voix
+        end
+        AR->>Main: hors itinéraire → recalcul / arrivée → vibration
+    else AR indisponible ou refusée
+        Main->>Camera: start(route, position)
+        Camera->>Compass: cap + pas (0,7 m par pas)
+        Camera-->>Visiteur: vidéo caméra + flèche WebGPU + carte + voix
+        Camera->>Main: changement d'étage confirmé / QR suivant
     end
-    AR->>Main: hors itinéraire → recalcul / arrivée → vibration
 ```
 
 ## 5. Modèle de données
@@ -203,17 +227,22 @@ classDiagram
 **Connector** : `{ id, kind, name, x, y, levels[] }` — un escalier relie deux
 niveaux consécutifs, un ascenseur tous les niveaux qu'il dessert.
 
-## 6. Déploiement
+## 6. Déploiement (UML simplifié)
 
 ```mermaid
 flowchart LR
-    DEV[Poste équipe] -->|node scripts/build-campus.mjs| DATA[assets/campus/supcom.json]
-    DEV -->|git push + PR| GH[GitHub main]
-    GH -->|vercel --prod| HOST[HTTPS Vercel]
-    HOST --> PHONE[Chrome Android]
-    PHONE --> ARCore[ARCore + WebXR/WebGPU]
-    CDN[jsDelivr pinned r187] --> PHONE
+    DEV["«device» Poste équipe"] -->|node scripts/build-campus.mjs| DATA["«artifact» assets/campus/supcom.json"]
+    DEV -->|git push + PR| GH["«node» GitHub main"]
+    GH -->|vercel --prod| VERCEL["«node» HTTPS Vercel — actif"]
+    GH -.->|Settings → Pages| PAGES["«node» GitHub Pages — à activer / 404"]
+    VERCEL --> PHONE["«device» Chrome Android"]
+    PAGES -.-> PHONE
+    PHONE --> ARCore["«device» ARCore + WebXR/WebGPU"]
+    CDN["«artifact» jsDelivr r187 + jsQR"] --> PHONE
 ```
+
+Vercel est le déploiement actif. GitHub Pages est demandé par le cahier des
+charges mais reste à activer par le propriétaire du dépôt (accès admin).
 
 ## 7. Patrons de conception
 
@@ -249,14 +278,15 @@ flowchart LR
 
 | Test | Attendu |
 |---|---|
-| Campus | 13 tests Node : données, amphis ≈ 310 m², alias QR, GPS aller-retour |
-| Routage | toutes les paires de lieux officiels, tous les lieux depuis l'entrée, étage 3 via escalier, sans escaliers = ascenseur |
-| Étapes | consignes en français avec caps (Nord, Sud-Ouest…) |
-| Boussole | cap téléphone debout nord / est, téléphone à plat |
-| QR | 15 cartes décodées par l'application |
-| Vue 3D | WebGPU actif, 4 étages, sélecteur, vue Plan, toucher = position |
+| Campus + routage | 64 tests Node (`npm test`) : données, amphis ≈ 310 m², alias QR, GPS, toutes les paires de lieux, sans escaliers |
 | AR (simulateur) | session `webgpu` + `hit-test`, images rendues, ancre, sortie |
 | Guidage AR | 12 marches simulées (`scripts/test-guidance.mjs`) : erreur moyenne < 0,6 m malgré une boussole faussée de ±15°, escaliers, recalcul, demi-tour |
+| Mode caméra | pas (0,7 m) simulés (`test-camera-guide.mjs`), marche Entrée → Amphi IBN KHALDOUN, escalier jusqu'à l'étage 3 ; clavier dans Chrome |
+| Boussole | cap téléphone debout nord/est, téléphone à plat ; filtre et déclinaison |
+| QR | 15 cartes décodées par l'application (`scanImage`) |
+| Vue 3D | WebGPU actif, 4 étages, sélecteur, vue Plan, toucher = position |
+| Voix | une annonce par virage (12 m puis 3 m), escalier et arrivée une fois, demi-tour au plus toutes les 8 s |
+| Diagnostic | verdicts `test-diagnostic.mjs` : HTTPS, WebGPU, WebXR, XRGPUBinding, caméra, boussole |
 | AR (téléphone) | Samsung S23, Chrome + ARCore + flag WebXR/WebGPU — **à valider** |
 | Hors ligne | shell, plan du campus et Three.js r187 après un premier chargement |
 
@@ -264,7 +294,7 @@ flowchart LR
 
 | Risque | Mitigation |
 |---|---|
-| Liaison WebXR/WebGPU non publiée dans Chrome | Flag documenté ; message clair et vue 3D WebGPU en repli |
+| Liaison WebXR/WebGPU non publiée dans Chrome | Flag documenté ; diagnostic ; **mode caméra** en repli ; pas de repli WebGL (exigence WebGPU) |
 | Portes absentes du plan CAD | Itinéraire jusqu'au point le plus proche + « accès à confirmer » ; passages relevés dans `corrections.json` |
 | Noms de salles inconnus | Codes stables `A1-07` ; mode relevé pour saisir les noms des plaques |
 | Boussole perturbée (acier, électronique) | Filtre, indicateur de fiabilité, conseil « faire un 8 », rescanner un QR |
@@ -280,7 +310,7 @@ flowchart LR
 | 3 | Destinations, itinéraire, distances | ✅ |
 | 4 | Session `immersive-ar`, hit test, flèche | ✅ code, 🟡 test S23 |
 | 5 | Campus SUP'COM réel, multi-étages, boussole, GPS, WebGPU | ✅ code, 🟡 relevé des noms sur place |
-| 6 | Calibration sur site, docs, vidéo, soutenance | ⬜ |
+| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.5.1 ; S23 + vidéo à faire |
 
 ## 12. Livrables
 
@@ -288,6 +318,7 @@ flowchart LR
   `src/navigation.js`, `src/view3d.js`, `src/ar.js`, `src/gpu.js`,
   `src/geo.js`, `src/survey.js`, `sw.js`, `manifest.json`, `assets/`,
   `scripts/build-campus.mjs`.
-- `docs/technical.md`, `docs/user-manual.md`, ce design notebook.
-- `ATTRIBUTION.md` à jour.
-- Vidéo de démonstration de 5 minutes.
+- `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`,
+  ce design notebook.
+- `ATTRIBUTION.md` à jour (v2.1) et `CHANGELOG.md`.
+- Vidéo de démonstration de 5 minutes — **à enregistrer**.

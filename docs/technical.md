@@ -22,7 +22,7 @@ augmentée WebXR orienté par la boussole.
 | Orientation | DeviceOrientation absolu (`deviceorientationabsolute`) |
 | Données | `assets/campus/supcom.json` généré par `scripts/build-campus.mjs` |
 | Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.5.1` |
-| Hébergement | HTTPS (Vercel ; GitHub Pages possible) |
+| Hébergement | HTTPS : Vercel (actif) ; GitHub Pages (à activer par le propriétaire du dépôt, accès admin requis) |
 
 Aucune ligne du code de l'application ne crée de contexte WebGL : `src/gpu.js`
 ne construit un `WebGPURenderer` que si `navigator.gpu.requestAdapter()`
@@ -250,9 +250,18 @@ Chaque QR encode l'id d'un lieu (`ENTREE_PRINCIPALE`, `AMPHI_KHAWAREZMI`,
 Cartes prêtes : `docs/qr-codes/` ; planche par niveau : `docs/qr-codes.html`.
 Lien direct : `?depart=ID&destination=ID`.
 
-## 11. Vérifications
+**Génération.** Les cartes sont produites hors ligne avec Python `qrcode` +
+Pillow à partir de `assets/campus/supcom.json` : le payload est l'identifiant
+du lieu, les modules sont entiers pour un décodage fiable. La planche
+`docs/qr-codes.html` interroge QuickChart pour imprimer toutes les salles d'un
+étage. Détail des fichiers : `docs/qr-codes/README.md`.
+
+## 11. Installation et vérifications
 
 ```bash
+git clone https://github.com/yessinomhiri-cpu/indoor-wayfinder.git
+cd indoor-wayfinder
+# aucune dépendance npm : Three.js et jsQR sont chargés depuis le CDN épinglé
 npm test                                    # 64 tests : routage, guidage AR, mode caméra, diagnostic
 python -m http.server 8000                  # puis http://localhost:8000
 ```
@@ -273,6 +282,16 @@ de détection du sol et ancre. Procédure complète :
 HTTPS obligatoire (caméra, WebXR, WebGPU, Service Worker). Après une
 modification d'un fichier mis en cache, augmenter `CACHE_NAME` dans `sw.js`.
 
+Déploiement actif (Vercel) :
+
 ```bash
 vercel --prod --yes
 ```
+
+Adresse : <https://indoor-wayfinder-lyart.vercel.app>.
+
+GitHub Pages est demandé par le cahier des charges, mais le site
+`github.io/indoor-wayfinder` est encore en 404 : seul le propriétaire du
+dépôt (accès admin) peut l'activer dans **Settings → Pages → Deploy from a
+branch → main / (root)**. Une fois activé, le même build statique est servi
+en HTTPS ; aucun serveur applicatif n'est nécessaire.
