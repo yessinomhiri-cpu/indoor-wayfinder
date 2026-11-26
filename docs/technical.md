@@ -1,6 +1,6 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 3.7.1 — campus SUP'COM, WebGPU, guidage AR, mode caméra et maquette extérieure (vue Campus)
+**Version :** 3.8.0 — campus SUP'COM, WebGPU, guidage AR, mode caméra, maquette extérieure (vue Campus) et vue en coupe des étages
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
@@ -21,7 +21,7 @@ augmentée WebXR orienté par la boussole.
 | Localisation | QR (`getUserMedia` + `BarcodeDetector` / jsQR 1.4.0), GPS extérieur (Geolocation) |
 | Orientation | DeviceOrientation absolu (`deviceorientationabsolute`) |
 | Données | `assets/campus/supcom.json` généré par `scripts/build-campus.mjs` |
-| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.7.1` |
+| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.8.0` |
 | Hébergement | HTTPS : Vercel (actif) ; GitHub Pages (à activer par le propriétaire du dépôt, accès admin requis) |
 
 Aucune ligne du code de l'application ne crée de contexte WebGL : `src/gpu.js`
@@ -43,6 +43,8 @@ indoor-wayfinder/
 │   ├── view3d.js            CampusView3D : campus 3D WebGPU, palettes jour / nuit
 │   ├── exterior.js          CampusExterior : maquette extérieure (vue Campus)
 │   ├── exterior-textures.js textures procédurales de la maquette
+│   ├── interior.js          CampusInterior : intérieur des étages (vue en coupe)
+│   ├── mesh-soup.js         construction de maillages fusionnés
 │   ├── ar.js                ARGuide : immersive-ar sur WebGPU, flèche, chevrons
 │   ├── gpu.js               détection WebGPU, fabrique WebGPURenderer
 │   ├── diagnostic.js        vérification de la chaîne AR WebGPU + test AR réel
@@ -164,6 +166,28 @@ revient à la vue 3D (`onViewModeChange` met à jour la barre d'outils).
   actif seulement dans cette vue.
 - **Textures** : `src/exterior-textures.js`, dessinées sur canvas (aucune
   image externe). Référence : vidéo officielle SUP'COM (voir `ATTRIBUTION.md`).
+
+### 6.2 Vue en coupe des étages (bouton 3D)
+
+Le bouton **3D** et les onglets d'étage montrent la même maquette de jour,
+coupée : le bâtiment extérieur est un `ClippingGroup` (plan de coupe WebGPU,
+ombres coupées aussi) coupé à `niveau × 3,6 m + 2,2 m`, et `CampusInterior`
+(`src/interior.js`) affiche l'intérieur de l'étage choisi. « Tous » empile les
+quatre intérieurs sans l'enveloppe ; « Plan » garde le plan de nuit vu de
+dessus. Chaque étage est construit à son premier affichage.
+
+- **Sol** : une bande par suite de cellules d'une même salle (ou du couloir)
+  sur chaque ligne de la grille ; salles trouvées par remplissage de la grille
+  de circulation depuis le point intérieur de chaque salle, limité à sa boîte.
+- **Murs** : traits des plans en faces verticales coupées à 2,2 m, ligne de
+  coupe sombre au sommet ; portes (arcs d'ouverture), marches d'escalier,
+  cages d'ascenseur vitrées.
+- **Amphithéâtres** (4, au RDC des blocs A et B) : scène du côté du centre de
+  la tour, gradins en arcs de 0,9 m autour de ce centre (montée ≤ 1,7 m),
+  sièges instanciés tous les 0,56 m là où la salle les contient, tableau et
+  pupitre. Les plans ne donnent pas le mobilier : disposition plausible.
+- **Interaction** : toucher le sol d'une salle place la position (sol de
+  l'étage affiché) ; itinéraire, balise et étiquettes dessinés dans la coupe.
 
 ## 7. Réalité augmentée
 

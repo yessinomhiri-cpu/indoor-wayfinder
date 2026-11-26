@@ -1,6 +1,6 @@
 # Design notebook — Indoor Wayfinder
 
-**Version :** 3.7.1
+**Version :** 3.8.0
 **Mise à jour :** 26 novembre 2026
 **Cahier des charges :** v1.0 — 24 octobre 2026 (périmètre élargi à la demande du superviseur : campus SUP'COM complet, plusieurs étages, boussole, GPS extérieur, rendu WebGPU)
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
@@ -95,6 +95,8 @@ flowchart TB
     DIAG --> XR
     VIEW --> GPU
     VIEW --> EXT
+    VIEW --> INT[src/interior.js<br/>vue en coupe des étages]
+    INT --> DATA
     EXT --> DATA
     AR --> GPU
     AR --> XR
@@ -194,6 +196,12 @@ classDiagram
         +group
         +sun
         +viewpoint
+        +setCut(height)
+    }
+    class CampusInterior {
+        +group
+        +show(levels)
+        +pickTargets
     }
     class ARGuide {
         +prepare()
@@ -227,6 +235,8 @@ classDiagram
     RouteStrategy <|-- AvoidStairsStrategy
     CampusView3D --> CampusMap
     CampusView3D *-- CampusExterior
+    CampusView3D *-- CampusInterior
+    CampusInterior --> CampusMap
     CampusExterior --> CampusMap
     ARGuide --> Compass
     ARGuide --> ARGuidance
@@ -295,7 +305,7 @@ charges mais reste à activer par le propriétaire du dépôt (accès admin).
 | Mode caméra | pas (0,7 m) simulés (`test-camera-guide.mjs`), marche Entrée → Amphi IBN KHALDOUN, escalier jusqu'à l'étage 3 ; clavier dans Chrome |
 | Boussole | cap téléphone debout nord/est, téléphone à plat ; filtre et déclinaison |
 | QR | 15 cartes décodées par l'application (`scanImage`) |
-| Vue 3D | WebGPU actif, 4 étages, sélecteur, vue Plan, toucher = position |
+| Vue 3D | coupe de jour de chaque étage (salles, murs coupés, escaliers, ascenseurs, 4 amphithéâtres avec gradins), « Tous » empilé, vue Plan de nuit, toucher = position |
 | Vue Campus | maquette de jour d'après la vidéo officielle SUP'COM (tours, aile vitrée, arche, enseigne, drapeaux, parvis, ombres) ; contours testés (`test-exterior.mjs`) ; aucun asset externe chargé |
 | Voix | une annonce par virage (12 m puis 3 m), escalier et arrivée une fois, demi-tour au plus toutes les 8 s |
 | Diagnostic | verdicts `test-diagnostic.mjs` : HTTPS, WebGPU, WebXR, XRGPUBinding, caméra, boussole |
@@ -322,13 +332,14 @@ charges mais reste à activer par le propriétaire du dépôt (accès admin).
 | 3 | Destinations, itinéraire, distances | ✅ |
 | 4 | Session `immersive-ar`, hit test, flèche | ✅ code, 🟡 test S23 |
 | 5 | Campus SUP'COM réel, multi-étages, boussole, GPS, WebGPU | ✅ code, 🟡 relevé des noms sur place |
-| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.7.1 ; S23 + vidéo à faire |
+| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.8.0 ; S23 + vidéo à faire |
 
 ## 12. Livrables
 
 - Code sur `main` : `index.html`, `src/main.js`, `src/scanner.js`,
   `src/navigation.js`, `src/view3d.js`, `src/exterior.js`,
-  `src/exterior-textures.js`, `src/ar.js`, `src/gpu.js`,
+  `src/exterior-textures.js`, `src/interior.js`, `src/mesh-soup.js`,
+  `src/ar.js`, `src/gpu.js`,
   `src/geo.js`, `src/survey.js`, `sw.js`, `manifest.json`, `assets/`,
   `scripts/build-campus.mjs`.
 - `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`,

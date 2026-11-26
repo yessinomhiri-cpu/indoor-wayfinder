@@ -3,6 +3,46 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.8.0] - 2026-11-26
+
+**Cut-away 3D view: every floor, room and amphitheatre in daylight.**
+
+### Changed
+
+- The **3D** button (and the floor tabs) now show a **cut-away** of the
+  daylight SUP'COM model: the building is cut 2.2 m above the chosen floor and
+  that floor's interior is shown in the same style as the Campus view. The
+  route, the destination beacon, the position and the labels are drawn inside.
+  **Tous** stacks the four floors without the outer shell. **Plan** keeps the
+  night plan seen from above.
+- Opening a route, a place or a floor from the Campus view now goes to that
+  floor (a one-floor route no longer stays on « Tous »).
+
+### Added
+
+- `src/interior.js` (`CampusInterior`), built per floor on first display:
+  - floor slab, each room's floor tinted (rooms found by a flood fill of the
+    routing grid inside their bounding box, doors opening onto corridors);
+  - walls from the plans cut at 2.2 m, with a dark section line on top;
+  - door swings, stair treads and glass lift shafts;
+  - the four amphitheatres: stage on the tower-centre side, tiers rising
+    outward in arcs, red seat rows, a board and a lectern. The plans give
+    no furniture, so this seating is a plausible layout, not a survey.
+- `src/mesh-soup.js`: merged-mesh builder shared by the exterior and interior.
+- The exterior building is a `ClippingGroup` (WebGPU clipping plane, shadows
+  clipped too) so it can be cut at any floor; façades are double-sided.
+
+### Fixed
+
+- A pointer released before `setPointerCapture` no longer raises an error.
+- Shadow map type warning (r187 WebGPU has no soft PCF variant).
+
+### Verified
+
+- Chrome with WebGPU: cut-away RDC (4 amphitheatres with seating), floor 1,
+  « Tous », Plan and Campus; route Entrée → Amphi IBN KHALDOUN drawn inside;
+  68/68 Node tests; no `webgl` in the code. Cache `v3.8.0`.
+
 ## [3.7.1] - 2026-11-26
 
 ### Changed

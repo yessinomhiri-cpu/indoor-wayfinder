@@ -6,7 +6,7 @@
  * Author       : Oussema Harrabi
  * Created      : 2026-11-05
  * Modified     : 2026-11-26
- * Version      : 3.7.1 (SUP'COM exterior modules; Campus exterior view; no forced reload; guidance UI; camera mode; guide arrow HUD; diagnostic AR WebGPU; offline shell, SUP'COM campus, Three.js r187 WebGPU)
+ * Version      : 3.8.0 (cut-away interior modules; SUP'COM exterior modules; Campus exterior view; no forced reload; guidance UI; camera mode; guide arrow HUD; diagnostic AR WebGPU; offline shell, SUP'COM campus, Three.js r187 WebGPU)
  * Description  : Service Worker for the Indoor Wayfinder PWA. Precaches the
  *                app shell, the SUP'COM campus data and the pinned Three.js
  *                WebGPU build, serves navigations
@@ -15,7 +15,7 @@
  * ==========================================================================
  */
 
-const CACHE_NAME = 'indoor-wayfinder-v3.7.1';
+const CACHE_NAME = 'indoor-wayfinder-v3.8.0';
 const SCOPE_URL = self.registration.scope;
 
 /** Application files required to boot the shell offline. */
@@ -31,6 +31,8 @@ const APP_SHELL = [
   new URL('src/view3d.js', SCOPE_URL).href,
   new URL('src/exterior.js', SCOPE_URL).href,
   new URL('src/exterior-textures.js', SCOPE_URL).href,
+  new URL('src/interior.js', SCOPE_URL).href,
+  new URL('src/mesh-soup.js', SCOPE_URL).href,
   new URL('src/gpu.js', SCOPE_URL).href,
   new URL('src/geo.js', SCOPE_URL).href,
   new URL('src/survey.js', SCOPE_URL).href,
