@@ -3,7 +3,7 @@
 **Projet :** Indoor Wayfinder — Navigation intérieure en réalité augmentée
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
-**Version :** 2.2 — Évaluation SUP'COM (2026/2027)
+**Version :** 2.3 — Évaluation SUP'COM (2026/2027)
 **Dernière mise à jour :** 26 novembre 2026
 
 ---
@@ -16,7 +16,7 @@ Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
     *   **Source originale :** Couche publique ArcGIS Online « SUPCOM Basemap » publiée par SUP'COM (propriétaire `SUPCOM_TUN`), utilisée par l'ancien site https://supnav.supcom.tn — service https://services-eu1.arcgis.com/Vx1BvPxWQ9O0WzWh/arcgis/rest/services/supcom_basemaps_gdb/FeatureServer
     *   **Auteur / Créateur :** SUP'COM — École Supérieure des Communications de Tunis
     *   **Licence :** Données publiées en accès public par SUP'COM, sans licence explicite ; usage académique interne à SUP'COM, crédit « Plans © SUP'COM » affiché dans l'application ; autorisation formelle à confirmer auprès de l'administration
-    *   **Modifications apportées par l'équipe :** Import par `scripts/build-campus.mjs` : conversion WGS84 → mètres locaux (origine : entrée principale), simplification Douglas–Peucker, grille de circulation 25 cm par étage (portes ouvertes à partir des symboles de porte), détection automatique des salles (233 locaux codés `A1-07`…), connecteurs escaliers/ascenseurs entre étages ; aucune géométrie inventée
+    *   **Modifications apportées par l'équipe :** Import par `scripts/build-campus.mjs` : conversion WGS84 → mètres locaux (origine : entrée principale), simplification Douglas–Peucker, grille de circulation 25 cm par étage (portes ouvertes à partir des symboles de porte), détection automatique des salles (233 locaux codés `A1-07`…), connecteurs escaliers/ascenseurs entre étages ; v3.7.0 : contour de chaque étage (`floors[].outline`, marching squares sur l'emprise de l'étage, simplifié) et parvis de 6 m (`exterior.apron`) pour la maquette extérieure ; aucune géométrie inventée
 
 *   **Asset :** Bâtiments, parkings et voies autour de SUP'COM (Technopôle El Ghazala) — `context` dans `assets/campus/supcom.json`
     *   **Source originale :** OpenStreetMap — https://www.openstreetmap.org (API https://api.openstreetmap.org/api/0.6/map)
@@ -28,13 +28,25 @@ Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
     *   **Source originale :** Aucun modèle importé — murs, dalles, portes, escaliers, ascenseurs, bâtiments voisins, tube d'itinéraire, chevrons, balise, marqueurs GPS / position / cap, flèche du nord générés par code avec Three.js à partir de `assets/campus/supcom.json` ; étiquettes dessinées sur un canvas 2D
     *   **Auteur / Créateur :** Équipe Indoor Wayfinder
     *   **Licence :** Code du projet (projet académique SUP'COM)
-    *   **Modifications apportées par l'équipe :** Rendu WebGPU (`WebGPURenderer`), 4 niveaux empilés à 3,6 m, sélecteur d'étage, vue orbite et vue « Plan » nord en haut ; **vue Campus** (2026-11-26) avec tours, bandeaux de fenêtres allumés, place, palmiers et portail
+    *   **Modifications apportées par l'équipe :** Rendu WebGPU (`WebGPURenderer`), 4 niveaux empilés à 3,6 m, sélecteur d'étage, vue orbite et vue « Plan » nord en haut ; vue Campus v3.6.0 (nocturne) remplacée en v3.7.0 par la maquette extérieure de jour ci-dessous
+
+*   **Asset :** Maquette extérieure de SUP'COM — vue « Campus » (`src/exterior.js`, `src/exterior-textures.js`, v3.7.0)
+    *   **Source originale :** Aucun modèle, image ou texture importé — façades extrudées par code à partir des contours d'étage des plans SUP'COM (`floors[].outline`), corniches, poteaux, arche parabolique, mâts, palmiers, arbres, lampadaires, voies (OpenStreetMap) et ciel générés avec des primitives Three.js ; textures (baie de tour, mur-rideau, dallage, enseigne, drapeau) dessinées sur canvas 2D par le code
+    *   **Auteur / Créateur :** Équipe Indoor Wayfinder
+    *   **Licence :** Code du projet (projet académique SUP'COM)
+    *   **Modifications apportées par l'équipe :** Proportions et composition d'après la vidéo officielle SUP'COM (référence visuelle ci-dessous) ; l'enseigne reprend seulement le nom « SUP'COM » en texte (SUP bleu marine, 'COM rouge) et le nom de l'école, sans copier le logo ; le drapeau tunisien est redessiné selon sa description officielle (fond rouge, disque blanc, croissant et étoile rouges)
+
+*   **Référence visuelle :** Vidéo 3D officielle du bâtiment SUP'COM II — https://www.supcom.tn/public/supcom.mp4 (page d'accueil de https://www.supcom.tn, consultée le 26 novembre 2026)
+    *   **Source originale :** Site officiel de SUP'COM ; la vidéo a été visionnée et des images fixes ont été extraites **localement, hors dépôt**, uniquement pour étudier l'architecture (tours blanches, vitrages, poteaux, corniche grise, aile vitrée, enseigne, arche, drapeaux, parvis) ; **aucune image, image de la vidéo ni extrait n'est intégré, copié ou redistribué** dans l'application ou le dépôt
+    *   **Auteur / Créateur :** SUP'COM — École Supérieure des Communications de Tunis (et l'auteur de la vidéo)
+    *   **Licence :** Aucune licence explicite ; consultation seulement, aucune réutilisation du média
+    *   **Modifications apportées par l'équipe :** Reproduction de l'architecture par une maquette procédurale originale (voir l'asset précédent) ; la seconde partie de la vidéo (projet d'aménagement de la cour intérieure) n'est pas reproduite
 
 *   **Référence visuelle :** Modèle 3D du campus du site **Forum SUP'COM** — https://forum.supcom.tn/ (scène Three.js/WebGL visible sur la page d'accueil, consultée le 26 novembre 2026)
     *   **Source originale :** Site Forum SUP'COM, section d'accueil ; les bundles ont seulement été consultés pour comprendre le rendu ; **aucun fichier de modèle, texture, code ou asset n'a été intégré, copié ni redistribué** dans l'application
     *   **Auteur / Créateur :** Forum SUP'COM / ses auteurs
     *   **Licence :** Aucune licence explicite fournie ; **aucune réutilisation** de leur code, géométrie ou texture
-    *   **Modifications apportées par l'équipe :** Adaptation du **langage visuel** uniquement (tours circulaires, bandeaux de fenêtres, éclairage nocturne, place, palmiers, portail) avec des primitives Three.js originales, à partir des plans SUP'COM et d'OpenStreetMap déjà documentés ci-dessus
+    *   **Modifications apportées par l'équipe :** Adaptation du **langage visuel** uniquement (tours circulaires, bandeaux de fenêtres, éclairage nocturne, place, palmiers, portail) avec des primitives Three.js originales, à partir des plans SUP'COM et d'OpenStreetMap déjà documentés ci-dessus — utilisé pour la vue Campus v3.6.0 ; en v3.7.0, seule la présence de l'arche et des tours a servi de recoupement, la maquette suivant la vidéo officielle
 
 *   **Asset :** Flèche de navigation AR, réticule et chevrons au sol (`createArrow()` et géométries dans `src/ar.js`)
     *   **Source originale :** Aucune URL externe — formes 2D (`THREE.Shape`) extrudées avec `ExtrudeGeometry` / `ShapeGeometry`, anneau `RingGeometry`
@@ -200,13 +212,17 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
     *   **Prompt ou usage principal :** Claude (Anthropic) : diagnostic des erreurs relevées sur le Samsung S23 (« requires user activation », espace `local-floor` non demandé) et correctifs conservés dans la version WebGPU
     *   **Axe de vérification appliqué par l'étudiant :** Simulateur WebXR reproduisant mot pour mot l'erreur du téléphone, puis démarrage correct ; **validation sur le S23 encore requise**
 
+*   **Composant ou Shader concerné :** Maquette extérieure de SUP'COM (`src/exterior.js`, `src/exterior-textures.js`, `src/view3d.js` — `#applyEnvironment`, `scripts/build-campus.mjs` — `outlinePolygons`, `scripts/test-exterior.mjs`)
+    *   **Prompt ou usage principal :** Claude (Anthropic) : analyse des images de la vidéo officielle SUP'COM, contours d'étage par marching squares, extrusion des façades par étage avec coordonnées de texture alignées (baies des tours, mur-rideau de l'aile), corniches et poteaux sur les bords de toit, arche, mâts, enseigne, végétation instanciée, routes en rubans, ciel et ombres du soleil ; palette de jour pour la vue Campus et retour automatique à la vue 3D
+    *   **Axe de vérification appliqué par l'étudiant :** Données régénérées comparées à l'ancien `supcom.json` (grille, salles, lieux et connecteurs identiques ; seuls les contours et le parvis sont ajoutés, plus deux bâtiments OSM édités entre-temps) ; 4 tests sur les contours (68 au total) ; rendu Chrome WebGPU comparé aux images de la vidéo (arche, enseigne, drapeaux, aile vitrée, tours) ; recherche « webgl » vide
+
 *   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
     *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, des données du campus et du build Three.js WebGPU), du manifeste et des icônes
-    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.6.0`, mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
+    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.7.0` (modules `exterior.js` et `exterior-textures.js` ajoutés), mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
 
 *   **Composant ou Shader concerné :** Documentation (`README.md`, `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`, `docs/design-notebook.md`, `docs/qr-codes/`, `ATTRIBUTION.md`, `CHANGELOG.md`)
     *   **Prompt ou usage principal :** Rédaction et mise à jour de la documentation technique, du manuel utilisateur, du design notebook UML, du guide téléphone, du README et des attributions
-    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 64 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.6.0
+    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 68 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.7.0
 
 ---
 

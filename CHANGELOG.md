@@ -3,6 +3,50 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.7.0] - 2026-11-26
+
+**Real SUP'COM exterior in the Campus view (daylight, WebGPU).**
+
+### Changed
+
+- **Campus view redesigned** after the official SUP'COM 3D video
+  (`https://www.supcom.tn/public/supcom.mp4`, SUP'COM II building):
+  white rendered towers with tall glazed curtains, a ring of steel columns
+  under a grey sloped crown, the glazed entrance wing with its grey fascia
+  and **SUP'COM** sign, the white parabolic arch over the entrance steps,
+  three Tunisian flags, a paved forecourt, lawn beds, palms, trees and lamp
+  posts, roads drawn as ribbons, a gradient sky and sun shadows.
+- The building is **extruded from the real floor outlines** of the SUP'COM
+  plans (one prism per floor), so the towers, the wing, the set-backs and the
+  partial upper floors match the plans instead of generic cylinders.
+- Campus view switches to a **daylight palette** (sky, fog, lights, ground,
+  OSM areas by kind) and hides the interior floors; 3D and Plan keep the
+  night palette. Choosing a floor, a place or a route from the Campus view
+  returns to the 3D view and updates the toolbar.
+
+### Added
+
+- `src/exterior.js` (`CampusExterior`): the exterior model, built once at
+  start-up from `assets/campus/supcom.json`; instanced columns, palms, trees.
+- `src/exterior-textures.js`: procedural canvas textures (tower bay,
+  curtain wall, paving, sign, flag). No image, model or texture is copied
+  from supcom.tn or forum.supcom.tn.
+- `scripts/build-campus.mjs` now writes `floors[].outline` (marching squares
+  on each floor footprint, simplified) and `exterior.apron` (6 m forecourt).
+  Routing grid, places, rooms and connectors are unchanged.
+- `scripts/test-exterior.mjs`: 4 tests on the outline and forecourt data.
+
+### Removed
+
+- The previous night exterior (lit window bands, rims, radial plaza, toy
+  palms, floating gate, stars) and the window bands drawn on every floor.
+
+### Verified
+
+- Chrome with WebGPU: Campus view renders with shadows; 3D / Plan / floor
+  tabs switch back to the interior; 68/68 Node tests pass; no `webgl` in the
+  code. Cache bumped to `v3.7.0` with the two new modules.
+
 ## [3.6.0] - 2026-11-26
 
 **Campus exterior view, adapted from the SUP'COM Forum 3D visual language.**

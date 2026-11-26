@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-04
  * Modified     : 2026-11-26
- * Version      : 3.6.0 (Campus exterior view; guidance UI, voice, journey bar; camera mode; guide arrow HUD; diagnostic AR WebGPU; SUP'COM campus – WebGPU, multi-floor, compass, GPS)
+ * Version      : 3.7.0 (daylight SUP'COM exterior in the Campus view; guidance UI, voice, journey bar; camera mode; guide arrow HUD; diagnostic AR WebGPU; SUP'COM campus – WebGPU, multi-floor, compass, GPS)
  * Description  : Application controller and NavigationService facade: wires
  *                the QR scanner, the SUP'COM campus model and router, the
  *                WebGPU 3D view, immersive-ar guidance, compass, outdoor GPS,
@@ -27,7 +27,7 @@ import { Compass, GpsTracker, shortCardinal } from './geo.js';
 import { SurveyStore } from './survey.js';
 import { hasWebGPU } from './gpu.js';
 
-const APP_VERSION = '3.6.0';
+const APP_VERSION = '3.7.0';
 const CAMPUS_URL = 'assets/campus/supcom.json';
 const WALKING_SPEED = 1.2; // m/s
 
@@ -656,6 +656,13 @@ function closeScanOverlay() {
 // 3D view, floors, map taps
 // ===========================================================================
 
+/** Marks the active view button (3D / Campus / Plan). */
+function syncViewButtons(mode) {
+  view3dButton.setAttribute('aria-pressed', String(mode === '3d'));
+  viewCampusButton.setAttribute('aria-pressed', String(mode === 'campus'));
+  viewTopButton.setAttribute('aria-pressed', String(mode === 'top'));
+}
+
 function updateFloorTabs() {
   if (!floorTabsElement || !view) return;
   const shown = view.showAllFloors ? 'all' : String(view.getFloor());
@@ -1108,7 +1115,10 @@ async function startARGuide() {
     return;
   }
   if (!arGuide || !arStatus.supported) {
-    view && view.setViewMode('3d');
+    if (view) {
+      view.setViewMode('3d');
+      syncViewButtons('3d');
+    }
     showStatusToast(arUnavailableMessage(), 8000);
     return;
   }
@@ -1455,25 +1465,19 @@ function initUIEventListeners() {
   view3dButton.addEventListener('click', () => {
     if (!view) return;
     view.setViewMode('3d');
-    view3dButton.setAttribute('aria-pressed', 'true');
-    viewCampusButton.setAttribute('aria-pressed', 'false');
-    viewTopButton.setAttribute('aria-pressed', 'false');
+    syncViewButtons('3d');
   });
   viewCampusButton.addEventListener('click', () => {
     if (!view) return;
     view.setFloor('all');
     updateFloorTabs();
     view.setViewMode('campus');
-    view3dButton.setAttribute('aria-pressed', 'false');
-    viewCampusButton.setAttribute('aria-pressed', 'true');
-    viewTopButton.setAttribute('aria-pressed', 'false');
+    syncViewButtons('campus');
   });
   viewTopButton.addEventListener('click', () => {
     if (!view) return;
     view.setViewMode('top');
-    view3dButton.setAttribute('aria-pressed', 'false');
-    viewCampusButton.setAttribute('aria-pressed', 'false');
-    viewTopButton.setAttribute('aria-pressed', 'true');
+    syncViewButtons('top');
   });
   gpsButton.addEventListener('click', toggleGps);
   compassButton.addEventListener('click', () => startCompass(true));
@@ -1614,7 +1618,13 @@ async function init() {
 
   // WebGPU campus view
   if (await hasWebGPU()) {
-    view = new CampusView3D({ container: map3dElement, campus, onPick: handleMapPick, getBottomOcclusion: getRoutePanelOcclusion });
+    view = new CampusView3D({
+      container: map3dElement,
+      campus,
+      onPick: handleMapPick,
+      getBottomOcclusion: getRoutePanelOcclusion,
+      onViewModeChange: syncViewButtons
+    });
     const ok = await view.init().catch((error) => { console.error('[view3d] init failed:', error); return false; });
     if (ok) {
       view.setActive(true);

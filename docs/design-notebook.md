@@ -1,6 +1,6 @@
 # Design notebook — Indoor Wayfinder
 
-**Version :** 3.6.0
+**Version :** 3.7.0
 **Mise à jour :** 26 novembre 2026
 **Cahier des charges :** v1.0 — 24 octobre 2026 (périmètre élargi à la demande du superviseur : campus SUP'COM complet, plusieurs étages, boussole, GPS extérieur, rendu WebGPU)
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
@@ -55,7 +55,8 @@ flowchart TB
         MAIN[src/main.js<br/>NavigationService : contrôleur + état]
         SCAN[src/scanner.js<br/>getUserMedia + QR]
         NAV[src/navigation.js<br/>CampusMap + CampusRouter Dijkstra]
-        VIEW[src/view3d.js<br/>campus 3D WebGPU + vue Campus]
+        VIEW[src/view3d.js<br/>campus 3D WebGPU]
+        EXT[src/exterior.js<br/>maquette extérieure, vue Campus]
         AR[src/ar.js<br/>immersive-ar sur WebGPU]
         GUIDE[src/ar-guidance.js<br/>localisation continue + guidage]
         GPU[src/gpu.js<br/>WebGPURenderer]
@@ -93,6 +94,8 @@ flowchart TB
     DIAG --> GPU
     DIAG --> XR
     VIEW --> GPU
+    VIEW --> EXT
+    EXT --> DATA
     AR --> GPU
     AR --> XR
     AR --> GUIDE
@@ -185,6 +188,12 @@ classDiagram
         +setState(current, destination, route)
         +setGps(fix)
         +setHeading(deg)
+        +setViewMode(mode)
+    }
+    class CampusExterior {
+        +group
+        +sun
+        +viewpoint
     }
     class ARGuide {
         +prepare()
@@ -217,6 +226,8 @@ classDiagram
     RouteStrategy <|-- ShortestPathStrategy
     RouteStrategy <|-- AvoidStairsStrategy
     CampusView3D --> CampusMap
+    CampusView3D *-- CampusExterior
+    CampusExterior --> CampusMap
     ARGuide --> Compass
     ARGuide --> ARGuidance
     ARGuidance --> CampusMap
@@ -278,14 +289,14 @@ charges mais reste à activer par le propriétaire du dépôt (accès admin).
 
 | Test | Attendu |
 |---|---|
-| Campus + routage | 64 tests Node (`npm test`) : données, amphis ≈ 310 m², alias QR, GPS, toutes les paires de lieux, sans escaliers |
+| Campus + routage | 68 tests Node (`npm test`) : données, amphis ≈ 310 m², alias QR, GPS, toutes les paires de lieux, sans escaliers |
 | AR (simulateur) | session `webgpu` + `hit-test`, images rendues, ancre, sortie |
 | Guidage AR | 12 marches simulées (`scripts/test-guidance.mjs`) : erreur moyenne < 0,6 m malgré une boussole faussée de ±15°, escaliers, recalcul, demi-tour |
 | Mode caméra | pas (0,7 m) simulés (`test-camera-guide.mjs`), marche Entrée → Amphi IBN KHALDOUN, escalier jusqu'à l'étage 3 ; clavier dans Chrome |
 | Boussole | cap téléphone debout nord/est, téléphone à plat ; filtre et déclinaison |
 | QR | 15 cartes décodées par l'application (`scanImage`) |
 | Vue 3D | WebGPU actif, 4 étages, sélecteur, vue Plan, toucher = position |
-| Vue Campus | caméra basse, tours, fenêtres, place, portail ; aucun asset externe chargé |
+| Vue Campus | maquette de jour d'après la vidéo officielle SUP'COM (tours, aile vitrée, arche, enseigne, drapeaux, parvis, ombres) ; contours testés (`test-exterior.mjs`) ; aucun asset externe chargé |
 | Voix | une annonce par virage (12 m puis 3 m), escalier et arrivée une fois, demi-tour au plus toutes les 8 s |
 | Diagnostic | verdicts `test-diagnostic.mjs` : HTTPS, WebGPU, WebXR, XRGPUBinding, caméra, boussole |
 | AR (téléphone) | Samsung S23, Chrome + ARCore + flag WebXR/WebGPU — **à valider** |
@@ -311,12 +322,13 @@ charges mais reste à activer par le propriétaire du dépôt (accès admin).
 | 3 | Destinations, itinéraire, distances | ✅ |
 | 4 | Session `immersive-ar`, hit test, flèche | ✅ code, 🟡 test S23 |
 | 5 | Campus SUP'COM réel, multi-étages, boussole, GPS, WebGPU | ✅ code, 🟡 relevé des noms sur place |
-| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.6.0 ; S23 + vidéo à faire |
+| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.7.0 ; S23 + vidéo à faire |
 
 ## 12. Livrables
 
 - Code sur `main` : `index.html`, `src/main.js`, `src/scanner.js`,
-  `src/navigation.js`, `src/view3d.js`, `src/ar.js`, `src/gpu.js`,
+  `src/navigation.js`, `src/view3d.js`, `src/exterior.js`,
+  `src/exterior-textures.js`, `src/ar.js`, `src/gpu.js`,
   `src/geo.js`, `src/survey.js`, `sw.js`, `manifest.json`, `assets/`,
   `scripts/build-campus.mjs`.
 - `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`,

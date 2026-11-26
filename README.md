@@ -12,7 +12,7 @@
 | **Repository** | [github.com/yessinomhiri-cpu/indoor-wayfinder](https://github.com/yessinomhiri-cpu/indoor-wayfinder) |
 | **Docs** | [Technical](docs/technical.md) · [User manual](docs/user-manual.md) · [Demo phone setup](docs/demo-phone-setup.md) · [Design notebook](docs/design-notebook.md) · [Changelog](CHANGELOG.md) · [Attribution](ATTRIBUTION.md) |
 | **Live demo** | [indoor-wayfinder-lyart.vercel.app](https://indoor-wayfinder-lyart.vercel.app) — v3.6.0, deployed 26 Nov 2026 |
-| **App version** | `v3.6.0` |
+| **App version** | `v3.7.0` |
 | **Last updated** | 2026-11-26 |
 
 ---
@@ -35,7 +35,7 @@ The bar **① Scanner → ② Destination → ③ Guidage** at the bottom of the
 2. **Every room, every floor.** 233 rooms are detected automatically, each with a stable code (`A1-07`). The four amphitheatres, the reception, the *bureau d'ordre* and the *buvette* carry their official names. The **Relevé** (survey) mode lets the team type in the names written on the doors.
 3. **Where am I?** Scan a QR code, pick a start point in the list, tap the plan, or use GPS outdoors.
 4. **Route.** Dijkstra on a 25 cm walkable grid covering the four floors; stairs and lifts connect them, and the *Sans escaliers* strategy uses lifts only. French steps with compass directions (« Marchez 22 m vers le Sud-Ouest »).
-5. **3D map (WebGPU).** Four stacked floors, floor selector, plan view (north up), animated route, destination beacon, position and heading. A frame budget keeps the GPU almost idle when nothing moves. **Campus** adds a low-angle exterior view adapted from the SUP'COM Forum visual language: three circular towers with lit window bands, tower rims, a night plaza, palms, lamps and the SUP'COM entrance gate.
+5. **3D map (WebGPU).** Four stacked floors, floor selector, plan view (north up), animated route, destination beacon, position and heading. A frame budget keeps the GPU almost idle when nothing moves. **Campus** shows a daylight exterior model of SUP'COM built from the real floor outlines and modelled after the official SUP'COM 3D video: white towers with tall glazing, steel columns under a grey crown, the glazed entrance wing with the SUP'COM sign, the white arch over the entrance steps, flags, forecourt, palms, trees and sun shadows (`src/exterior.js`, procedural textures only).
 6. **Two guidance modes, one button.**
    - **AR mode (WebXR on WebGPU)** — the QR scan fixes the start, ARCore tracks every step, and the walked path is **map-matched to the real walls**. Chevrons flow on the floor, real walls hide the guidance behind them, the route is recalculated when you leave it, floors change on the stairs. If ARCore finds no floor after 3 s, the guidance continues at an estimated floor height and a tap places the arrow 1.5 m ahead.
    - **Camera mode (any Android phone)** — no ARCore and no Chrome flag needed. The camera image fills the screen and the 3D arrow is drawn on top; the **compass** turns it towards the route and the **step counter** moves you along the route (0.7 m per step). At the stairs, « Je suis à l'étage N » continues on the next floor. If the AR session is refused, the app switches to this mode by itself.
@@ -58,7 +58,7 @@ All 3D is rendered by Three.js **r187** `WebGPURenderer` on the **WebGPU** backe
 ## Run it
 
 ```bash
-npm test                                  # 64 tests (Node, no browser needed)
+npm test                                  # 68 tests (Node, no browser needed)
 python -m http.server 8000                # http://localhost:8000 (HTTPS needed on the phone)
 node scripts/build-campus.mjs             # re-import the SUP'COM plans + OpenStreetMap
 ```
@@ -81,6 +81,7 @@ flowchart TB
     MAIN --> SCAN[scanner.js · QR]
     MAIN --> NAV[navigation.js · CampusMap + Dijkstra]
     MAIN --> VIEW[view3d.js · 3D map]
+    VIEW --> EXT[exterior.js · Campus exterior model]
     MAIN --> AR[ar.js · immersive-ar]
     MAIN --> CAM[camera-guide.js · camera mode]
     MAIN --> VOICE[voice.js + nav-format.js · card and voice]
@@ -103,7 +104,9 @@ flowchart TB
 |---|---|
 | `src/main.js` | Controller / facade: state, UI, 3-step bar, route panel, guidance start (AR or camera), card and voice, compass, GPS, survey |
 | `src/navigation.js` | `CampusMap`, `CampusRouter` (Dijkstra, strategies), turn-by-turn steps |
-| `src/view3d.js` | `CampusView3D`: WebGPU 3D campus, floors, route, markers, touch controls, frame budget |
+| `src/view3d.js` | `CampusView3D`: WebGPU 3D campus, floors, route, markers, touch controls, frame budget, day / night palette |
+| `src/exterior.js` | `CampusExterior`: daylight SUP'COM exterior (façades from the floor outlines, crown, columns, arch, sign, flags, landscape, sky, sun) |
+| `src/exterior-textures.js` | Procedural canvas textures of the exterior (tower bay, curtain wall, paving, sign, flag) |
 | `src/ar.js` | `ARGuide`: immersive-ar on WebGPU, hit test, anchors, chevrons, wall occluders, floating guide arrow |
 | `src/ar-guidance.js` | `ARGuidance` (live localization, map matching), `FloorEstimator`, guide arrow modes |
 | `src/camera-guide.js` | `CameraGuide`: camera mode (video + WebGPU arrow, compass, step counter, keyboard test) |
@@ -129,12 +132,14 @@ Each QR code encodes a place id: `ENTREE_PRINCIPALE`, `ACCUEIL`, `AMPHI_KHAWAREZ
 
 ## Verified
 
-- **Node tests: 64/64** (`npm test`):
+- **Node tests: 68/68** (`npm test`):
   - campus and routing: every official place reachable, all 241 places routed from the entrance, 3rd-floor routes through stairs or a lift, lifts-only strategy, French steps, compass maths;
   - AR guidance: 12 simulated walks with an unknown AR yaw and a biased compass (mean error < 0.6 m), floor fallback, the blue arrow within 25° of the true route direction;
   - camera mode: step counting on simulated walks and shaking, the Entrée → Amphi IBN KHALDOUN walk with a ±15° compass, stairs to the 3rd floor;
   - voice: one announcement per turn (12 m, then 3 m), stairs and arrival once, « Faites demi-tour » at most every 8 s;
-  - diagnostic verdicts.
+  - diagnostic verdicts;
+  - exterior data: floor outlines (orientation, footprint, stacking) and the forecourt around the entrance.
+- **Campus view (Chrome, WebGPU):** exterior model with sun shadows, compared with the official SUP'COM video; floor tabs and the 3D / Plan buttons return to the interior.
 - **Chrome (WebGPU), full app with the Service Worker:** 3D map, 3-step bar, single guidance button, camera guidance with the card, mini-map and arrow (keyboard walk), offline cache of the 5 critical files.
 - **Simulated ARCore device** whose `XRGPUBinding` returns real GPU textures: AR session, frames, floor found / not found, anchors, refused session.
 - **QR cards:** all 15 decode with the app's decoder.

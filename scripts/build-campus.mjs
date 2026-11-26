@@ -5,8 +5,8 @@
  * Team         : SUP'COM SIA – Indoor Wayfinder
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
- * Modified     : 2026-11-12
- * Version      : 3.0.0 (SUP'COM campus import)
+ * Modified     : 2026-11-26
+ * Version      : 3.7.0 (floor outlines and forecourt for the exterior model)
  * Description  : Builds assets/campus/supcom.json from public sources:
  *                - SUP'COM floor plans (RDC, étages 1–3) and labels published
  *                  by SUP'COM on ArcGIS Online (owner SUPCOM_TUN, the data
@@ -58,6 +58,7 @@ const MAX_DOOR_SPAN = Number(process.env.MAX_DOOR_SPAN || 3.5); // m; a larger d
 const MIN_ROOM_AREA = 4;     // m²
 const MAX_ROOM_AREA = 900;   // m²
 const MAX_ROOM_DOORS = 4;    // more doors than this = corridor / hall
+const APRON_WIDTH = 6;       // metres of paved forecourt drawn around the ground floor
 
 // ---------------------------------------------------------------------------
 // Geometry helpers
@@ -242,6 +243,113 @@ function distanceToWalls(grid, blocked) {
     }
   }
   return d.map((v) => v / 3);
+}
+
+/**
+ * Outline polygons of a mask (marching squares on a decimated grid, then
+ * Douglas–Peucker). Returns [{ outer: [x,y,…], holes: [[x,y,…]] }] with
+ * outer rings counter-clockwise (x east, y north), used for the exterior.
+ */
+function outlinePolygons(grid, mask, { step = 2, tolerance = 0.3, minArea = 25 } = {}) {
+  const w = Math.ceil(grid.width / step);
+  const h = Math.ceil(grid.height / step);
+  const value = new Uint8Array((w + 2) * (h + 2)); // 1-cell empty border
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let count = 0;
+      let total = 0;
+      for (let dy = 0; dy < step; dy++) for (let dx = 0; dx < step; dx++) {
+        const gx = x * step + dx;
+        const gy = y * step + dy;
+        if (gx >= grid.width || gy >= grid.height) continue;
+        total++;
+        count += mask[grid.index(gx, gy)] ? 1 : 0;
+      }
+      value[(y + 1) * (w + 2) + (x + 1)] = count * 2 >= total ? 1 : 0;
+    }
+  }
+  const W = w + 2;
+  const H = h + 2;
+  const cell = grid.res * step;
+  const at = (x, y) => value[y * W + x];
+  // Edge midpoints keyed on a doubled lattice: corner (x, y) → (2x, 2y)
+  const key = (a, b) => `${a},${b}`;
+  const next = new Map();
+  const addSegment = (a, b) => next.set(key(...a), b);
+  for (let y = 0; y < H - 1; y++) {
+    for (let x = 0; x < W - 1; x++) {
+      const c = (at(x, y + 1) << 3) | (at(x + 1, y + 1) << 2) | (at(x + 1, y) << 1) | at(x, y);
+      if (c === 0 || c === 15) continue;
+      const bottom = [2 * x + 1, 2 * y];
+      const right = [2 * x + 2, 2 * y + 1];
+      const top = [2 * x + 1, 2 * y + 2];
+      const left = [2 * x, 2 * y + 1];
+      // Directed with the inside (value 1) on the right; loops are reversed below
+      switch (c) {
+        case 1: addSegment(left, bottom); break;
+        case 2: addSegment(bottom, right); break;
+        case 3: addSegment(left, right); break;
+        case 4: addSegment(right, top); break;
+        case 5: addSegment(left, top); addSegment(right, bottom); break;
+        case 6: addSegment(bottom, top); break;
+        case 7: addSegment(left, top); break;
+        case 8: addSegment(top, left); break;
+        case 9: addSegment(top, bottom); break;
+        case 10: addSegment(top, right); addSegment(bottom, left); break;
+        case 11: addSegment(top, right); break;
+        case 12: addSegment(right, left); break;
+        case 13: addSegment(right, bottom); break;
+        case 14: addSegment(bottom, left); break;
+        default: break;
+      }
+    }
+  }
+  const toLocal = ([a, b]) => [grid.minX + ((a / 2) - 1 + 0.5) * cell, grid.minY + ((b / 2) - 1 + 0.5) * cell];
+  const loops = [];
+  const visited = new Set();
+  for (const [startKey, first] of next) {
+    if (visited.has(startKey)) continue;
+    const loop = [];
+    let currentKey = startKey;
+    let point = startKey.split(',').map(Number);
+    while (!visited.has(currentKey)) {
+      visited.add(currentKey);
+      loop.push(toLocal(point));
+      point = next.get(currentKey);
+      if (!point) break;
+      currentKey = key(...point);
+    }
+    if (loop.length < 4) continue;
+    loop.reverse();
+    const simplified = simplify([...loop, loop[0]], tolerance).slice(0, -1);
+    let area = 0;
+    for (let i = 0; i < simplified.length; i++) {
+      const [x0, y0] = simplified[i];
+      const [x1, y1] = simplified[(i + 1) % simplified.length];
+      area += x0 * y1 - x1 * y0;
+    }
+    area /= 2;
+    if (Math.abs(area) < minArea || simplified.length < 3) continue;
+    loops.push({ points: simplified, area });
+  }
+  // Counter-clockwise = outer ring; clockwise = hole
+  const inside = ([px, py], ring) => {
+    let hit = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) hit = !hit;
+    }
+    return hit;
+  };
+  const outers = loops.filter((l) => l.area > 0).sort((a, b) => b.area - a.area);
+  const result = outers.map((outer) => ({ outer, holes: [] }));
+  for (const hole of loops.filter((l) => l.area < 0)) {
+    const owner = result.find((r) => inside(hole.points[0], r.outer.points));
+    if (owner) owner.holes.push(hole);
+  }
+  const flat = (points) => points.flatMap(([x, y]) => [cm(x), cm(y)]);
+  return result.map((r) => ({ outer: flat(r.outer.points), holes: r.holes.map((hole) => flat(hole.points)) }));
 }
 
 /** Run-length encoding of a byte array: [value, count, value, count, …]. */
@@ -439,6 +547,7 @@ async function main() {
   const places = [];
   const connectors = [];
   const gridFloors = [];
+  let apron = [];
 
   for (const source of floorSources) {
     const { level } = source;
@@ -611,6 +720,15 @@ async function main() {
         .map((part) => part.flatMap(([x, y]) => [cm(x), cm(y)]));
     }
 
+    // Building outline (outer rings + courtyards) for the exterior model
+    geometry.outline = outlinePolygons(grid, footprint);
+    if (level === 0) {
+      // Largest ring only: the forecourt around the main building
+      apron = outlinePolygons(grid, dilate(grid, footprint, Math.round(APRON_WIDTH / grid.res)), { step: 4, tolerance: 0.8 })
+        .slice(0, 1)
+        .map((polygon) => polygon.outer);
+    }
+
     floors.push({ level, name: source.name, short: source.short, elevation: level * FLOOR_HEIGHT, ...geometry });
     console.log(`  ${source.short}: ${floorRooms.length} rooms, ${places.filter((p) => p.level === level).length} places`);
   }
@@ -681,7 +799,8 @@ async function main() {
     grid: { res: GRID_RES, minX: grid.minX, minY: grid.minY, width: grid.width, height: grid.height, floors: gridFloors },
     connectors,
     places,
-    context
+    context,
+    exterior: { apron }
   };
 
   await mkdir(dirname(OUTPUT), { recursive: true });
