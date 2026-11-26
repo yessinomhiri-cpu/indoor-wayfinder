@@ -1,6 +1,6 @@
 # Documentation technique — Indoor Wayfinder
 
-**Version :** 3.7.0 — campus SUP'COM, WebGPU, guidage AR, mode caméra et maquette extérieure (vue Campus)
+**Version :** 3.7.1 — campus SUP'COM, WebGPU, guidage AR, mode caméra et maquette extérieure (vue Campus)
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
 **Superviseur :** Mohamed-Becha Kaâniche — INDP3-SIA 26-27
 
@@ -21,7 +21,7 @@ augmentée WebXR orienté par la boussole.
 | Localisation | QR (`getUserMedia` + `BarcodeDetector` / jsQR 1.4.0), GPS extérieur (Geolocation) |
 | Orientation | DeviceOrientation absolu (`deviceorientationabsolute`) |
 | Données | `assets/campus/supcom.json` généré par `scripts/build-campus.mjs` |
-| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.7.0` |
+| Hors ligne | Service Worker `sw.js`, cache `indoor-wayfinder-v3.7.1` |
 | Hébergement | HTTPS : Vercel (actif) ; GitHub Pages (à activer par le propriétaire du dépôt, accès admin requis) |
 
 Aucune ligne du code de l'application ne crée de contexte WebGL : `src/gpu.js`
@@ -133,7 +133,7 @@ chevrons animés, balise de destination, marqueur de position et cap.
 
 ### 6.1 Maquette extérieure (vue Campus)
 
-Le bouton **Campus** affiche `CampusExterior` (`src/exterior.js`), construit
+Le site s'ouvre sur cette vue. Le bouton **Campus** affiche `CampusExterior` (`src/exterior.js`), construit
 une fois au démarrage, et passe la scène en palette de jour
 (`#applyEnvironment` : ciel, brouillard, lumières, sol, zones OSM par type) ;
 les étages intérieurs sont masqués. Choisir un étage, un lieu ou un itinéraire
@@ -153,7 +153,9 @@ revient à la vue 3D (`onViewModeChange` met à jour la barre d'outils).
   bandeau (aile), décalages en onglet pour rester continus ; poteaux d'acier
   instanciés tous les 6,5 m sous la corniche des tours.
 - **Entrée** : repère calé sur la façade du RDC devant « Entrée principale »
-  (normale moyenne des arêtes proches) : arche parabolique extrudée, terrasse
+  (normale moyenne des arêtes proches) : arche parabolique extrudée posée
+  contre le mur (face arrière sur le point le plus saillant de la façade
+  sous sa portée), terrasse
   et marches, trois mâts avec le drapeau tunisien, enseigne « SUP'COM » sur le
   bandeau du dernier étage, parvis dallé, pelouses.
 - **Paysage** : palmiers et arbres instanciés autour du parvis (hors bâtiments

@@ -213,16 +213,16 @@ L'utilisation d'IA est un outil de complétion. Elle doit être documentée et m
     *   **Axe de vérification appliqué par l'étudiant :** Simulateur WebXR reproduisant mot pour mot l'erreur du téléphone, puis démarrage correct ; **validation sur le S23 encore requise**
 
 *   **Composant ou Shader concerné :** Maquette extérieure de SUP'COM (`src/exterior.js`, `src/exterior-textures.js`, `src/view3d.js` — `#applyEnvironment`, `scripts/build-campus.mjs` — `outlinePolygons`, `scripts/test-exterior.mjs`)
-    *   **Prompt ou usage principal :** Claude (Anthropic) : analyse des images de la vidéo officielle SUP'COM, contours d'étage par marching squares, extrusion des façades par étage avec coordonnées de texture alignées (baies des tours, mur-rideau de l'aile), corniches et poteaux sur les bords de toit, arche, mâts, enseigne, végétation instanciée, routes en rubans, ciel et ombres du soleil ; palette de jour pour la vue Campus et retour automatique à la vue 3D
+    *   **Prompt ou usage principal :** Claude (Anthropic) : analyse des images de la vidéo officielle SUP'COM, contours d'étage par marching squares, extrusion des façades par étage avec coordonnées de texture alignées (baies des tours, mur-rideau de l'aile), corniches et poteaux sur les bords de toit, arche, mâts, enseigne, végétation instanciée, routes en rubans, ciel et ombres du soleil ; palette de jour pour la vue Campus (vue d'ouverture du site, v3.7.1), arche posée contre le mur de l'entrée et retour automatique à la vue 3D
     *   **Axe de vérification appliqué par l'étudiant :** Données régénérées comparées à l'ancien `supcom.json` (grille, salles, lieux et connecteurs identiques ; seuls les contours et le parvis sont ajoutés, plus deux bâtiments OSM édités entre-temps) ; 4 tests sur les contours (68 au total) ; rendu Chrome WebGPU comparé aux images de la vidéo (arche, enseigne, drapeaux, aile vitrée, tours) ; recherche « webgl » vide
 
 *   **Composant ou Shader concerné :** PWA, offline et icônes (`sw.js`, `manifest.json`, `assets/icons/`)
     *   **Prompt ou usage principal :** Génération du Service Worker (cache du shell, des données du campus et du build Three.js WebGPU), du manifeste et des icônes
-    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.7.0` (modules `exterior.js` et `exterior-textures.js` ajoutés), mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
+    *   **Axe de vérification appliqué par l'étudiant :** Cache `v3.7.1` (modules `exterior.js` et `exterior-textures.js` ajoutés), mise à jour d'une version précédente sans boucle de rechargement (`client.navigate` supprimé), vérification JSON du manifeste
 
 *   **Composant ou Shader concerné :** Documentation (`README.md`, `docs/technical.md`, `docs/user-manual.md`, `docs/demo-phone-setup.md`, `docs/design-notebook.md`, `docs/qr-codes/`, `ATTRIBUTION.md`, `CHANGELOG.md`)
     *   **Prompt ou usage principal :** Rédaction et mise à jour de la documentation technique, du manuel utilisateur, du design notebook UML, du guide téléphone, du README et des attributions
-    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 68 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.7.0
+    *   **Axe de vérification appliqué par l'étudiant :** Relecture croisée avec le code, les 68 tests et le cahier des charges ; liens vérifiés ; versions alignées sur v3.7.1
 
 ---
 
