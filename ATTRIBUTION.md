@@ -31,7 +31,7 @@ Tout asset tri-dimensionnel ou visuel importé doit être consigné ci-dessous.
     *   **Modifications apportées par l'équipe :** Rendu WebGPU (`WebGPURenderer`), 4 niveaux empilés à 3,6 m, sélecteur d'étage, vue orbite et vue « Plan » nord en haut ; **vue Campus** (2026-11-26) avec tours, bandeaux de fenêtres allumés, place, palmiers et portail
 
 *   **Référence visuelle :** Modèle 3D du campus du site **Forum SUP'COM** — https://forum.supcom.tn/ (scène Three.js/WebGL visible sur la page d'accueil, consultée le 26 novembre 2026)
-    *   **Source originale :** Site Forum SUP'COM, section d'accueil ; aucun fichier de modèle, texture, code ou asset n'a été téléchargé ni copié
+    *   **Source originale :** Site Forum SUP'COM, section d'accueil ; les bundles ont seulement été consultés pour comprendre le rendu ; **aucun fichier de modèle, texture, code ou asset n'a été intégré, copié ni redistribué** dans l'application
     *   **Auteur / Créateur :** Forum SUP'COM / ses auteurs
     *   **Licence :** Aucune licence explicite fournie ; **aucune réutilisation** de leur code, géométrie ou texture
     *   **Modifications apportées par l'équipe :** Adaptation du **langage visuel** uniquement (tours circulaires, bandeaux de fenêtres, éclairage nocturne, place, palmiers, portail) avec des primitives Three.js originales, à partir des plans SUP'COM et d'OpenStreetMap déjà documentés ci-dessus
