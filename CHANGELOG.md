@@ -3,6 +3,19 @@
 All notable changes to Indoor Wayfinder are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.7.1] - 2026-11-26
+
+### Changed
+
+- **The site opens on the Campus view** (SUP'COM exterior, all floors).
+  Choosing a floor, a place or a route still switches to the 3D interior.
+- **Entrance arch set against the front wall** of the glazed wing: its back
+  face is placed on the most protruding point of the façade under its span
+  (measured on the floor outlines), instead of standing 13 m out. The three
+  flagpoles moved to the left of the arch, 3 m from the wall.
+- Shadow map type `PCFShadowMap` (r187 WebGPU no longer has the soft
+  variant; removes a console warning). Cache bumped to `v3.7.1`.
+
 ## [3.7.0] - 2026-11-26
 
 **Real SUP'COM exterior in the Campus view (daylight, WebGPU).**

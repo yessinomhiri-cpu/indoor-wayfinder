@@ -1,6 +1,6 @@
 # Design notebook — Indoor Wayfinder
 
-**Version :** 3.7.0
+**Version :** 3.7.1
 **Mise à jour :** 26 novembre 2026
 **Cahier des charges :** v1.0 — 24 octobre 2026 (périmètre élargi à la demande du superviseur : campus SUP'COM complet, plusieurs étages, boussole, GPS extérieur, rendu WebGPU)
 **Équipe :** Yassine Mhiri, Oussema Harrabi, Amin Jarbaoui
@@ -322,7 +322,7 @@ charges mais reste à activer par le propriétaire du dépôt (accès admin).
 | 3 | Destinations, itinéraire, distances | ✅ |
 | 4 | Session `immersive-ar`, hit test, flèche | ✅ code, 🟡 test S23 |
 | 5 | Campus SUP'COM réel, multi-étages, boussole, GPS, WebGPU | ✅ code, 🟡 relevé des noms sur place |
-| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.7.0 ; S23 + vidéo à faire |
+| 6 | Calibration sur site, docs, vidéo, soutenance | 🟡 docs v3.7.1 ; S23 + vidéo à faire |
 
 ## 12. Livrables
 

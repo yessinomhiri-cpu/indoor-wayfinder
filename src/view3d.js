@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-12
  * Modified     : 2026-11-26
- * Version      : 3.7.0 (daylight SUP'COM exterior in the Campus view)
+ * Version      : 3.7.1 (Campus view on open, immediate framing)
  * Description  : Real-time WebGPU view of the SUP'COM campus generated from
  *                assets/campus/supcom.json: the main building with its four
  *                floors (walls, doors, stairs, lifts from the SUP'COM plans),
@@ -136,7 +136,7 @@ export class CampusView3D {
 
     // Shadows are cast only by the exterior's sun (Campus view)
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog(NIGHT.fog.color, NIGHT.fog.near, NIGHT.fog.far);
@@ -228,8 +228,10 @@ export class CampusView3D {
    * -----------
    * @param {'3d'|'top'|'campus'} mode – Orbit view, top view (north up), or
    *        the low-angle campus exterior view.
+   * @param {{immediate?: boolean}} [options] – Jump to the view without easing
+   *        (used for the first view when the site opens).
    */
-  setViewMode(mode) {
+  setViewMode(mode, { immediate = false } = {}) {
     const wasCampus = this.viewMode === 'campus';
     this.viewMode = mode;
     if (mode === 'top') {
@@ -239,7 +241,7 @@ export class CampusView3D {
       const viewpoint = this.exterior.viewpoint;
       this.goalElevation = 0.3;
       this.azimuth = viewpoint.azimuth;
-      this.#frame(viewpoint.centre, viewpoint.radius);
+      this.#frame(viewpoint.centre, viewpoint.radius, immediate);
     } else {
       this.goalElevation = 0.95;
     }

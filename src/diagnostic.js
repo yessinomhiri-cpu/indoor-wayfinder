@@ -24,7 +24,7 @@
  * ==========================================================================
  */
 
-export const APP_VERSION = '3.7.0';
+export const APP_VERSION = '3.7.1';
 
 /** Check outcomes. */
 export const STATUS = Object.freeze({

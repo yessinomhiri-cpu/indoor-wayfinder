@@ -6,7 +6,7 @@
  * Authors      : Amin, Yassine, Oussema
  * Created      : 2026-11-26
  * Modified     : 2026-11-26
- * Version      : 3.7.0 (SUP'COM exterior redesign)
+ * Version      : 3.7.1 (arch against the entrance wall)
  * Description  : Daylight exterior model of the SUP'COM main building for
  *                the "Campus" view, built from the real floor outlines in
  *                assets/campus/supcom.json (one prism per floor, so set-backs
@@ -614,13 +614,27 @@ export class CampusExterior {
     }
   }
 
-  /** White parabolic arch shell standing in front of the entrance wing. */
+  /**
+   * Distance from the entrance façade point to the building along `front`,
+   * measured at `along` metres along the façade (0 at the entrance; positive
+   * when the wall stands further out there).
+   */
+  #wallOffset(along) {
+    for (let front = 30; front >= -10; front -= 0.1) {
+      const p = this.#entrancePoint(along, front);
+      if (this.#levelAt(p.x, -p.z) >= 0) return front;
+    }
+    return 0;
+  }
+
+  /** White parabolic arch shell set against the front wall of the entrance wing. */
   #buildArch() {
     const span = 15;       // half span (m)
     const height = 9.2;
     const thickness = 1.15;
     const footWidth = 1.7;
     const depth = 4.2;
+    const bevel = 0.12;
     const segments = 48;
     const outer = [];
     const inner = [];
@@ -634,19 +648,22 @@ export class CampusExterior {
     const geometry = new THREE.ExtrudeGeometry(shape, {
       depth,
       bevelEnabled: true,
-      bevelThickness: 0.12,
-      bevelSize: 0.12,
+      bevelThickness: bevel,
+      bevelSize: bevel,
       bevelSegments: 2,
       curveSegments: 1
     });
     geometry.translate(0, 0, -depth / 2);
     const arch = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: COLOR.arch, roughness: 0.45 }));
-    arch.position.copy(this.#entrancePoint(0, 13, 0));
+    // Back face against the wall: the most protruding façade point under the span
+    let wall = -Infinity;
+    for (let along = -span; along <= span; along += 0.5) wall = Math.max(wall, this.#wallOffset(along));
+    arch.position.copy(this.#entrancePoint(0, wall + depth / 2 + bevel, 0));
     arch.rotation.y = this.#entranceYaw;
     this.group.add(arch);
   }
 
-  /** Three flagpoles with the Tunisian flag, left of the sign. */
+  /** Three flagpoles with the Tunisian flag, left of the arch. */
   #buildFlags() {
     const poleMaterial = new THREE.MeshStandardMaterial({ color: COLOR.pole, roughness: 0.3, metalness: 0.7 });
     const flagMaterial = new THREE.MeshStandardMaterial({ map: createTunisiaFlagTexture(), roughness: 0.8, side: THREE.DoubleSide });
@@ -659,9 +676,10 @@ export class CampusExterior {
     }
     flagGeometry.computeVertexNormals();
     const poleHeight = 14.5;
-    [-8, -11, -14].forEach((along, index) => {
+    [-17.5, -20, -22.5].forEach((along, index) => {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, poleHeight, 10).translate(0, poleHeight / 2, 0), poleMaterial);
-      pole.position.copy(this.#entrancePoint(along, 3.2, 0.45));
+      // 3 m in front of the wall at that point (the façade is not straight)
+      pole.position.copy(this.#entrancePoint(along, Math.max(this.#wallOffset(along), 0) + 3, 0));
       this.group.add(pole);
       const flag = new THREE.Mesh(flagGeometry, flagMaterial);
       flag.position.copy(pole.position).add(new THREE.Vector3(0, poleHeight - 1.05 - index * 0.25, 0));
